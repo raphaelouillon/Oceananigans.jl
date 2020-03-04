@@ -110,57 +110,19 @@ function calculate_boundary_source_terms!(Gⁿ, arch, U, C, args...)
 end
 
 """
-Update the horizontal velocities u and v via
+Complete the fractional step to determine the velocity field at n+1 via
 
-    `u^{n+1} = u^n + (Gu^{n+½} - δₓp_{NH} / Δx) Δt`
+    `u^{n+1} = u★ - ∇p_{NH} * Δt`
 
-Note that the vertical velocity is not explicitly time stepped.
+Note that velocity fields share memory space with the predictor velocity field, so that the update
+can be performed in-place.
 """
-function update_velocities!(U, grid, Δt, G, pNHS)
+function _fractional_step_velocities!(U, grid, Δt, pNHS)
     @loop_xyz i j k grid begin
-        @inbounds U.u[i, j, k] += (G.u[i, j, k] - ∂xᶠᵃᵃ(i, j, k, grid, pNHS)) * Δt
-        @inbounds U.v[i, j, k] += (G.v[i, j, k] - ∂yᵃᶠᵃ(i, j, k, grid, pNHS)) * Δt
+        @inbounds U.u[i, j, k] += - ∂xᶠᵃᵃ(i, j, k, grid, pNHS) * Δt
+        @inbounds U.v[i, j, k] += - ∂yᵃᶠᵃ(i, j, k, grid, pNHS) * Δt
+        @inbounds U.v[i, j, k] += - ∂zᵃᵃᶠ(i, j, k, grid, pNHS) * Δt
     end
-    return nothing
-end
-
-"""
-Update the horizontal velocities u and v via
-
-    `u^{n+1} = u^n + Gu^{n+½} / Δt`
-
-Note that the vertical velocity is not explicitly time stepped.
-"""
-function update_velocities!(U, grid, Δt, G, ::Nothing)
-    @loop_xyz i j k grid begin
-        @inbounds U.u[i, j, k] += G.u[i, j, k] * Δt
-        @inbounds U.v[i, j, k] += G.v[i, j, k] * Δt
-    end
-    return nothing
-end
-
-"""
-Update tracers via
-
-    `c^{n+1} = c^n + Gc^{n+½} Δt`
-"""
-function update_tracer!(c, grid, Δt, Gc)
-    @loop_xyz i j k grid begin
-        @inbounds c[i, j, k] += Gc[i, j, k] * Δt
-    end
-    return nothing
-end
-
-"Update the solution variables (velocities and tracers)."
-function update_solution!(U, C, arch, grid, Δt, G, pNHS)
-    @launch device(arch) config=launch_config(grid, :xyz) update_velocities!(U, grid, Δt, G, pNHS)
-
-    for i in 1:length(C)
-        @inbounds c = C[i]
-        @inbounds Gc = G[i+3]
-        @launch device(arch) config=launch_config(grid, :xyz) update_tracer!(c, grid, Δt, Gc)
-    end
-
     return nothing
 end
 
@@ -191,8 +153,12 @@ Compute the vertical velocity w by integrating the continuity equation from the 
     `w^{n+1} = -∫ [∂/∂x (u^{n+1}) + ∂/∂y (v^{n+1})] dz`
 """
 function compute_w_from_continuity!(model)
+    fill_halo_regions!(model.velocities, model.architecture,
+                       boundary_condition_function_arguments(model)...)
+
     @launch(device(model.architecture), config=launch_config(model.grid, :xy),
             _compute_w_from_continuity!(datatuple(model.velocities), model.grid))
+
     return nothing
 end
 

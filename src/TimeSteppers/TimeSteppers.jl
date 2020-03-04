@@ -122,37 +122,25 @@ end
 
 Calculate the (nonhydrostatic) pressure correction associated `tendencies`, `velocities`, and step size `Δt`.
 """
-function calculate_pressure_correction!(nonhydrostatic_pressure, Δt, tendencies, velocities, model)
-    velocity_tendencies = (u=model.timestepper.Gⁿ.u, v=model.timestepper.Gⁿ.v, w=model.timestepper.Gⁿ.w)
-
-    fill_halo_regions!(velocity_tendencies, model.architecture)
+function calculate_pressure_correction!(nonhydrostatic_pressure, Δt, predictor_velocities, model)
+    fill_halo_regions!(model.timestepper.predictor_velocities, model.architecture,
+                       boundary_condition_function_arguments(model)...)
 
     solve_for_pressure!(nonhydrostatic_pressure, model.pressure_solver,
-                        model.architecture, model.grid, velocities, tendencies, Δt)
+                        model.architecture, model.grid, predictor_velocities, Δt)
 
     fill_halo_regions!(model.pressures.pNHS, model.architecture)
 
     return nothing
 end
 
-calculate_pressure_correction!(::Nothing, args...) = nothing
-
 """
-    complete_pressure_correction_step!(velocities, Δt, tracers, pressures, tendencies, model)
-
-After calculating the pressure correction, complete the pressure correction step by updating
-the velocity and tracer fields.
+Evaluate the right-hand-side terms for velocity fields and tracer fields
+at time step n+½ using a weighted 2nd-order Adams-Bashforth method.
 """
-function complete_pressure_correction_step!(velocities, Δt, tracers, pressures, tendencies, model)
-
-    update_solution!(velocities, tracers, model.architecture,
-                     model.grid, Δt, tendencies, pressures.pNHS)
-
-    fill_halo_regions!(model.velocities, model.architecture,
-                       boundary_condition_function_arguments(model)...)
-
-    compute_w_from_continuity!(model)
-
+function fractional_step_velocities!(U, arch, grid, Δt, pNHS)
+    @launch(device(arch), config=launch_config(grid, :xyz),
+            _fractional_step_velocities!(U, grid, Δt, pNHS))
     return nothing
 end
 
