@@ -57,7 +57,9 @@ boundary_condition_function_arguments(model) =
     (model.clock.time, model.clock.iteration, datatuple(model.velocities),
      datatuple(model.tracers), model.parameters)
 
-include("generic_time_stepping.jl")
+include("time_step_precomputations.jl")
+include("calculate_tendencies.jl")
+include("calculate_pressure_correction.jl")
 include("velocity_and_tracer_tendencies.jl")
 include("time_stepping_kernels.jl")
 include("adams_bashforth.jl")
