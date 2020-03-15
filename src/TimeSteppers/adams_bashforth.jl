@@ -52,7 +52,7 @@ function time_step!(model::IncompressibleModel{<:AdamsBashforthTimeStepper}, Δt
     ab2_time_step_tracers!(tracers, model.architecture, model.grid, Δt, χ, Gⁿ, G⁻)
 
     # Fractional step. Note that predictor velocities share memory space with velocities.
-    ab2_update_predictor_velocities!(predictor_velocities, model.architecture, model.grid, Δt, χ, Gⁿ, G⁻)
+    ab2_update_predictor_velocities!(predictor_velocities, Δt, χ, Gⁿ, G⁻)
 
     calculate_pressure_correction!(pressures.pNHS, Δt, predictor_velocities, model)
 
@@ -141,7 +141,7 @@ function ab2_time_step_tracer!(c, grid::AbstractGrid{FT}, Δt, χ, Gcⁿ, Gc⁻)
 end
 
 """
-    ab2_update_predictor_velocities!(U★, arch, grid, Δt, χ, Gⁿ, G⁻)
+    ab2_update_predictor_velocities!(U★, Δt, χ, Gⁿ, G⁻)
 
 Update the predictor velocty field using the tendencies at both time step 
 `n` (the current time step) and the previous time step `n-1`.
@@ -150,6 +150,7 @@ which is required for correct evaluation of the predictor velocity divergence
 across the boundary during the calculation of the pressure correction.
 """
 function ab2_update_predictor_velocities!(U★, Δt, χ, Gⁿ, G⁻)
+    FT = eltype(U★.u)
     @. U★.u += Δt * (FT(1.5) + χ) * Gⁿ.u - (FT(0.5) + χ) * G⁻.u
     @. U★.v += Δt * (FT(1.5) + χ) * Gⁿ.v - (FT(0.5) + χ) * G⁻.v
     @. U★.w += Δt * (FT(1.5) + χ) * Gⁿ.w - (FT(0.5) + χ) * G⁻.w

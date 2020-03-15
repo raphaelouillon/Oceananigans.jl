@@ -3,7 +3,7 @@
 
 Calculate the (nonhydrostatic) pressure correction associated `tendencies`, `velocities`, and step size `Δt`.
 """
-function calculate_pressure_correction!(nonhydrostatic_pressure, predictor_velocities, Δt, tendencies, model)
+function calculate_pressure_correction!(nonhydrostatic_pressure, Δt, predictor_velocities, model)
 
     solve_for_pressure!(nonhydrostatic_pressure, model.pressure_solver,
                         model.architecture, model.grid, Δt, predictor_velocities)
