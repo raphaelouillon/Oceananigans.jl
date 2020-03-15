@@ -3,9 +3,7 @@
 
 Calculate the (nonhydrostatic) pressure correction associated `tendencies`, `velocities`, and step size `Δt`.
 """
-function calculate_pressure_correction!(nonhydrostatic_pressure, Δt, predictor_velocities, model)
-    fill_halo_regions!(model.timestepper.predictor_velocities, model.architecture,
-                       boundary_condition_function_arguments(model)...)
+function calculate_pressure_correction!(nonhydrostatic_pressure, predictor_velocities, Δt, tendencies, model)
 
     solve_for_pressure!(nonhydrostatic_pressure, model.pressure_solver,
                         model.architecture, model.grid, Δt, predictor_velocities)
@@ -39,4 +37,3 @@ function fractional_step_velocities!(U, C, arch, grid, Δt, pNHS)
     @launch device(arch) config=launch_config(grid, :xyz) _fractional_step_velocities!(U, grid, Δt, pNHS)
     return nothing
 end
-

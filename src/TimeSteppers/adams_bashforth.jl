@@ -140,25 +140,18 @@ function ab2_time_step_tracer!(c, grid::AbstractGrid{FT}, Δt, χ, Gcⁿ, Gc⁻)
     return nothing
 end
 
-function ab2_update_predictor_velocities!(U★, arch, grid, Δt, χ, Gⁿ, G⁻)
-    @launch(device(arch), config=launch_config(grid, :xyz), 
-            _ab2_update_predictor_velocities!(U★, grid, Δt, χ, Gⁿ, G⁻))
-    return nothing
-end
+"""
+    ab2_update_predictor_velocities!(U★, arch, grid, Δt, χ, Gⁿ, G⁻)
 
-""" Update predictor velocity field. """
-function _ab2_update_predictor_velocities!(U★, grid::AbstractGrid{FT}, Δt, χ, Gⁿ, G⁻) where FT
-    @loop_xyz i j k grid begin
-        @inbounds begin
-            U★.u[i, j, k] += Δt * (   (FT(1.5) + χ) * Gⁿ.u[i, j, k]
-                                    - (FT(0.5) + χ) * G⁻.u[i, j, k] )
-
-            U★.v[i, j, k] += Δt * (   (FT(1.5) + χ) * Gⁿ.v[i, j, k]
-                                    - (FT(0.5) + χ) * G⁻.v[i, j, k] )
-
-            U★.w[i, j, k] += Δt * (   (FT(1.5) + χ) * Gⁿ.w[i, j, k]
-                                    - (FT(0.5) + χ) * G⁻.w[i, j, k] )
-        end
-    end
+Update the predictor velocty field using the tendencies at both time step 
+`n` (the current time step) and the previous time step `n-1`.
+This function updates the predictor velocity in the interior and on the boundaries,
+which is required for correct evaluation of the predictor velocity divergence 
+across the boundary during the calculation of the pressure correction.
+"""
+function ab2_update_predictor_velocities!(U★, Δt, χ, Gⁿ, G⁻)
+    @. U★.u += Δt * (FT(1.5) + χ) * Gⁿ.u - (FT(0.5) + χ) * G⁻.u
+    @. U★.v += Δt * (FT(1.5) + χ) * Gⁿ.v - (FT(0.5) + χ) * G⁻.v
+    @. U★.w += Δt * (FT(1.5) + χ) * Gⁿ.w - (FT(0.5) + χ) * G⁻.w
     return nothing
 end
