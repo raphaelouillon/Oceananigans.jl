@@ -76,27 +76,27 @@ field_outputs = FieldOutputs(merge(model.velocities, model.tracers, (νₑ=model
 simulation.output_writers[:fields] = JLD2OutputWriter(model, field_outputs,
                                                       interval = 2minute,
                                                         prefix = &quot;langmuir_turbulence&quot;,
-                                                         force = true)</code></pre><h2 id="Running-the-simulation-1"><a class="docs-heading-anchor" href="#Running-the-simulation-1">Running the simulation</a><a class="docs-heading-anchor-permalink" href="#Running-the-simulation-1" title="Permalink"></a></h2><p>This part is easy,</p><pre><code class="language-julia">run!(simulation)</code></pre><pre><code class="language-none">[ Info: i: 0100, t: 8.333 min, Δt: 5.000 s, umax = (7.9e-02, 1.8e-02, 2.6e-02) ms⁻¹, wall time: 14.144 s
-[ Info: i: 0200, t: 17.500 min, Δt: 5.500 s, umax = (8.1e-02, 1.9e-02, 1.6e-02) ms⁻¹, wall time: 16.627 s
-[ Info: i: 0300, t: 27.583 min, Δt: 6.050 s, umax = (8.7e-02, 2.3e-02, 1.4e-02) ms⁻¹, wall time: 19.076 s
-[ Info: i: 0400, t: 38.675 min, Δt: 6.655 s, umax = (9.2e-02, 3.4e-02, 2.3e-02) ms⁻¹, wall time: 21.545 s
-[ Info: i: 0500, t: 50.876 min, Δt: 7.321 s, umax = (9.3e-02, 4.6e-02, 2.5e-02) ms⁻¹, wall time: 24.003 s
-[ Info: i: 0600, t: 1.072 hr, Δt: 8.053 s, umax = (8.7e-02, 5.4e-02, 2.5e-02) ms⁻¹, wall time: 26.464 s
-[ Info: i: 0700, t: 1.318 hr, Δt: 8.858 s, umax = (9.0e-02, 5.5e-02, 2.6e-02) ms⁻¹, wall time: 28.933 s
-[ Info: i: 0800, t: 1.564 hr, Δt: 8.856 s, umax = (9.9e-02, 6.2e-02, 3.3e-02) ms⁻¹, wall time: 31.392 s
-[ Info: i: 0900, t: 1.788 hr, Δt: 8.064 s, umax = (8.7e-02, 6.5e-02, 2.9e-02) ms⁻¹, wall time: 33.870 s
-[ Info: i: 1000, t: 2.034 hr, Δt: 8.871 s, umax = (8.8e-02, 7.5e-02, 2.9e-02) ms⁻¹, wall time: 36.353 s
-[ Info: i: 1100, t: 2.287 hr, Δt: 9.116 s, umax = (9.1e-02, 7.9e-02, 3.1e-02) ms⁻¹, wall time: 38.823 s
-[ Info: i: 1200, t: 2.533 hr, Δt: 8.827 s, umax = (9.0e-02, 7.6e-02, 2.7e-02) ms⁻¹, wall time: 41.295 s
-[ Info: i: 1300, t: 2.779 hr, Δt: 8.859 s, umax = (9.7e-02, 8.1e-02, 3.5e-02) ms⁻¹, wall time: 43.778 s
-[ Info: i: 1400, t: 3.007 hr, Δt: 8.238 s, umax = (1.0e-01, 9.5e-02, 3.1e-02) ms⁻¹, wall time: 46.255 s
-.[ Info: i: 1500, t: 3.221 hr, Δt: 7.684 s, umax = (9.2e-02, 9.0e-02, 3.0e-02) ms⁻¹, wall time: 48.709 s
+                                                         force = true)</code></pre><h2 id="Running-the-simulation-1"><a class="docs-heading-anchor" href="#Running-the-simulation-1">Running the simulation</a><a class="docs-heading-anchor-permalink" href="#Running-the-simulation-1" title="Permalink"></a></h2><p>This part is easy,</p><pre><code class="language-julia">run!(simulation)</code></pre><pre><code class="language-none">[ Info: i: 0100, t: 8.333 min, Δt: 5.000 s, umax = (7.7e-02, 1.8e-02, 2.4e-02) ms⁻¹, wall time: 13.040 s
+[ Info: i: 0200, t: 17.500 min, Δt: 5.500 s, umax = (8.2e-02, 2.0e-02, 1.6e-02) ms⁻¹, wall time: 15.605 s
+[ Info: i: 0300, t: 27.583 min, Δt: 6.050 s, umax = (8.8e-02, 2.3e-02, 1.3e-02) ms⁻¹, wall time: 18.143 s
+[ Info: i: 0400, t: 38.675 min, Δt: 6.655 s, umax = (9.2e-02, 3.5e-02, 1.8e-02) ms⁻¹, wall time: 20.687 s
+[ Info: i: 0500, t: 50.876 min, Δt: 7.321 s, umax = (9.0e-02, 4.5e-02, 3.0e-02) ms⁻¹, wall time: 23.246 s
+[ Info: i: 0600, t: 1.072 hr, Δt: 8.053 s, umax = (8.6e-02, 5.2e-02, 2.9e-02) ms⁻¹, wall time: 25.804 s
+[ Info: i: 0700, t: 1.318 hr, Δt: 8.858 s, umax = (8.8e-02, 6.0e-02, 2.9e-02) ms⁻¹, wall time: 28.385 s
+[ Info: i: 0800, t: 1.570 hr, Δt: 9.085 s, umax = (9.6e-02, 6.1e-02, 2.6e-02) ms⁻¹, wall time: 30.950 s
+[ Info: i: 0900, t: 1.802 hr, Δt: 8.349 s, umax = (9.1e-02, 6.5e-02, 2.7e-02) ms⁻¹, wall time: 33.513 s
+[ Info: i: 1000, t: 2.045 hr, Δt: 8.756 s, umax = (9.0e-02, 7.7e-02, 3.6e-02) ms⁻¹, wall time: 36.064 s
+[ Info: i: 1100, t: 2.293 hr, Δt: 8.927 s, umax = (9.9e-02, 8.2e-02, 3.6e-02) ms⁻¹, wall time: 38.628 s
+[ Info: i: 1200, t: 2.519 hr, Δt: 8.112 s, umax = (9.8e-02, 8.8e-02, 3.4e-02) ms⁻¹, wall time: 41.187 s
+[ Info: i: 1300, t: 2.744 hr, Δt: 8.127 s, umax = (9.8e-02, 9.2e-02, 2.9e-02) ms⁻¹, wall time: 43.747 s
+[ Info: i: 1400, t: 2.970 hr, Δt: 8.135 s, umax = (9.1e-02, 9.1e-02, 2.9e-02) ms⁻¹, wall time: 46.304 s
+.[ Info: i: 1500, t: 3.213 hr, Δt: 8.745 s, umax = (9.3e-02, 9.2e-02, 2.8e-02) ms⁻¹, wall time: 48.883 s
 
-[ Info: i: 1600, t: 3.456 hr, Δt: 8.452 s, umax = (8.8e-02, 8.9e-02, 3.0e-02) ms⁻¹, wall time: 51.182 s
-[ Info: i: 1700, t: 3.705 hr, Δt: 8.972 s, umax = (8.7e-02, 9.5e-02, 3.3e-02) ms⁻¹, wall time: 53.667 s
-[ Info: i: 1800, t: 3.940 hr, Δt: 8.458 s, umax = (8.6e-02, 9.7e-02, 2.5e-02) ms⁻¹, wall time: 56.142 s
-[ Info: i: 1900, t: 4.169 hr, Δt: 8.243 s, umax = (8.6e-02, 9.5e-02, 3.0e-02) ms⁻¹, wall time: 58.626 s
-[ Info: Simulation is stopping. Model time 4.169 hr has hit or exceeded simulation stop time 4.000 hr.</code></pre><h1 id="Making-a-neat-movie-1"><a class="docs-heading-anchor" href="#Making-a-neat-movie-1">Making a neat movie</a><a class="docs-heading-anchor-permalink" href="#Making-a-neat-movie-1" title="Permalink"></a></h1><p>We look at the results by plotting vertical slices of <span>$u$</span> and <span>$w$</span>, and a horizontal slice of <span>$w$</span> to look for Langmuir cells.</p><pre><code class="language-julia">k = searchsortedfirst(grid.zF[:], -8)</code></pre><p>Making the coordinate arrays takes a few lines of code,</p><pre><code class="language-julia">xw, yw, zw = nodes(model.velocities.w)
+[ Info: i: 1600, t: 3.453 hr, Δt: 8.622 s, umax = (9.6e-02, 9.1e-02, 3.4e-02) ms⁻¹, wall time: 51.438 s
+[ Info: i: 1700, t: 3.684 hr, Δt: 8.334 s, umax = (8.6e-02, 9.4e-02, 3.1e-02) ms⁻¹, wall time: 54.012 s
+[ Info: i: 1800, t: 3.922 hr, Δt: 8.546 s, umax = (8.9e-02, 9.5e-02, 2.8e-02) ms⁻¹, wall time: 56.567 s
+[ Info: i: 1900, t: 4.156 hr, Δt: 8.458 s, umax = (8.3e-02, 9.9e-02, 2.8e-02) ms⁻¹, wall time: 59.143 s
+[ Info: Simulation is stopping. Model time 4.156 hr has hit or exceeded simulation stop time 4.000 hr.</code></pre><h1 id="Making-a-neat-movie-1"><a class="docs-heading-anchor" href="#Making-a-neat-movie-1">Making a neat movie</a><a class="docs-heading-anchor-permalink" href="#Making-a-neat-movie-1" title="Permalink"></a></h1><p>We look at the results by plotting vertical slices of <span>$u$</span> and <span>$w$</span>, and a horizontal slice of <span>$w$</span> to look for Langmuir cells.</p><pre><code class="language-julia">k = searchsortedfirst(grid.zF[:], -8)</code></pre><p>Making the coordinate arrays takes a few lines of code,</p><pre><code class="language-julia">xw, yw, zw = nodes(model.velocities.w)
 xu, yu, zu = nodes(model.velocities.u)
 
 xw, yw, zw = xw[:], yw[:], zw[:]
@@ -170,4 +170,4 @@ anim = @animate for (i, iter) in enumerate(iterations)
     iter == iterations[end] &amp;&amp; close(file)
 end
 
-mp4(anim, &quot;langmuir_turbulence.mp4&quot;, fps = 15) # hide</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../internal_wave/">« Internal wave</a><a class="docs-footer-nextpage" href="../../model_setup/overview/">Overview »</a></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Wednesday 17 June 2020 15:06">Wednesday 17 June 2020</span>. Using Julia version 1.4.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+mp4(anim, &quot;langmuir_turbulence.mp4&quot;, fps = 15) # hide</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../internal_wave/">« Internal wave</a><a class="docs-footer-nextpage" href="../../model_setup/overview/">Overview »</a></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Thursday 18 June 2020 21:44">Thursday 18 June 2020</span>. Using Julia version 1.4.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
