@@ -37,7 +37,7 @@ A macro to compile and execute `expr` only if CUDA is installed and available. G
 wrap expressions that can only be compiled if `CuArrays` and `CUDAnative` can be loaded.
 """
 macro hascuda(expr)
-    return has_cuda() ? :($(esc(expr))) : :(nothing)
+    return has_cuda_gpu() ? :($(esc(expr))) : :(nothing)
 end
 
 device(::CPU) = GPUifyLoops.CPU()
