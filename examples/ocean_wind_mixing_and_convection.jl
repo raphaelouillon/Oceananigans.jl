@@ -1,103 +1,163 @@
-# # Wind and convection-driven mixing in an ocean surface boundary layer
+# # [Wind- and convection-driven mixing in an ocean surface boundary layer](@id gpu_example)
 #
 # This example simulates mixing by three-dimensional turbulence in an ocean surface
 # boundary layer driven by atmospheric winds and convection. It demonstrates:
 #
-#   * how to use the `SeawaterBuoyancy` model for buoyancy with a linear equation of state;
-#   * how to use a turbulence closure for large eddy simulation;
-#   * how to use a function to impose a boundary condition;
+#   * How to set-up a grid with varying spacing in the vertical direction
+#   * How to use the `SeawaterBuoyancy` model for buoyancy with a linear equation of state.
+#   * How to use a turbulence closure for large eddy simulation.
+#   * How to use a function to impose a boundary condition.
 #
-# In addition to `Oceananigans.jl` we need `Plots` for plotting, `Random` for
-# generating random initial conditions, and `Printf` for printing progress messages.
-# We also need `Oceananigans.OutputWriters` and `Oceananigans.Diagnostics` to access
-# some nice features for writing output data to disk.
+# ## Install dependencies
+#
+# First let's make sure we have all required packages installed.
 
-using Random, Printf, Plots
+# ```julia
+# using Pkg
+# pkg"add Oceananigans, JLD2, Plots"
+# ```
 
-using Oceananigans, Oceananigans.OutputWriters, Oceananigans.Diagnostics, Oceananigans.Utils,
-      Oceananigans.BoundaryConditions, Oceananigans.Grids
+# We start by importing all of the packages and functions that we'll need for this
+# example.
 
-# ## Model parameters
-#
-# Here we use an isotropic, cubic grid with `Nz` grid points and grid spacing
-# `Δz = 1` meter. We specify fluxes of heat, momentum, and salinity via
-#
-#   1. A temperature flux `Qᵀ` at the top of the domain, which is related to heat flux
-#       by `Qᵀ = Qʰ / (ρ₀ * cᴾ)`, where `Qʰ` is the heat flux, `ρ₀` is a reference density,
-#       and `cᴾ` is the heat capacity of seawater. With a reference density
-#       `ρ₀ = 1026 kg m⁻³`and heat capacity `cᴾ = 3991`, our chosen temperature flux of
-#       `Qᵀ = 5 × 10⁻⁵ K m⁻¹ s⁻¹` corresponds to a heat flux of `Qʰ = 204.7 W m⁻²`, a
-#       relatively powerful cooling rate.
-#
-#   2. A velocity flux `Qᵘ` at the top of the domain, which is related
-#       to the `x` momentum flux `τˣ` via `τˣ = ρ₀ * Qᵘ`, where `ρ₀` is a reference density.
-#       Our chosen value of `Qᵘ = -2 × 10⁻⁵ m² s⁻²` roughly corresponds to atmospheric winds
-#       of `uᵃ = 2.9 m s⁻¹` in the positive `x`-direction, using the parameterization
-#       `τ = 0.0025 * |uᵃ| * uᵃ`.
-#
-#   3. An evaporation rate `evaporation = 10⁻⁷ m s⁻¹`, or approximately 0.1 millimeter per
-#       hour.
-#
-# Finally, we use an initial temperature gradient of `∂T/∂z = 0.005 K m⁻¹`,
-# which implies an iniital buoyancy frequency `N² = α * g * ∂T/∂z = 9.8 × 10⁻⁶ s⁻²`
-# with a thermal expansion coefficient `α = 2 × 10⁻⁴ K⁻¹` and gravitational acceleration
-# `g = 9.81 s⁻²`. Note that, by default, the `SeawaterBuoyancy` model uses a gravitational
-# acceleration `gᴱᵃʳᵗʰ = 9.80665 s⁻²`.
+using Random
+using Printf
+using Plots
+using JLD2
 
-         Nz = 32       # Number of grid points in x, y, z
-         Δz = 1.0      # Grid spacing in x, y, z (meters)
-         Qᵀ = 5e-5     # Temperature flux at surface
-         Qᵘ = -2e-5    # Velocity flux at surface
-       ∂T∂z = 0.005    # Initial vertical temperature gradient
-evaporation = 1e-7     # Mass-specific evaporation rate [m s⁻¹]
-          f = 1e-4     # Coriolis parameter
-          α = 2e-4     # Thermal expansion coefficient
-          β = 8e-4     # Haline contraction coefficient
-nothing # hide
+using Oceananigans
+using Oceananigans.Units: minute, minutes, hour
 
+# ## The grid
+#
+# We use 32²×24 grid points with 2 m grid spacing in the horizontal and
+# varying spacing in the vertical, with higher resolution closer to the
+# surface. Here we use a stretching function for the vertical nodes that
+# maintains relatively constant vertical spacing in the mixed layer, which
+# is desirable from a numerical standpoint:
+
+Nz = 24          # number of points in the vertical direction
+Lz = 32          # (m) domain depth
+
+refinement = 1.2 # controls spacing near surface (higher means finer spaced)
+stretching = 12  # controls rate of stretching at bottom
+
+## Normalized height ranging from 0 to 1
+h(k) = (k - 1) / Nz
+
+## Linear near-surface generator
+ζ₀(k) = 1 + (h(k) - 1) / refinement
+
+## Bottom-intensified stretching function 
+Σ(k) = (1 - exp(-stretching * h(k))) / (1 - exp(-stretching))
+
+## Generating function
+z_faces(k) = Lz * (ζ₀(k) * Σ(k) - 1)
+
+grid = RectilinearGrid(size = (32, 32, Nz), 
+                          x = (0, 64),
+                          y = (0, 64),
+                          z = z_faces)
+
+# We plot vertical spacing versus depth to inspect the prescribed grid stretching:
+
+plot(grid.Δzᵃᵃᶜ[1:grid.Nz], grid.zᵃᵃᶜ[1:grid.Nz],
+     marker = :circle,
+     ylabel = "Depth (m)",
+     xlabel = "Vertical spacing (m)",
+     legend = nothing)
+
+# ## Buoyancy that depends on temperature and salinity
+#
+# We use the `SeawaterBuoyancy` model with a linear equation of state,
+
+buoyancy = SeawaterBuoyancy(equation_of_state=LinearEquationOfState(α=2e-4, β=8e-4))
+
+# where ``\alpha`` and ``\beta`` are the thermal expansion and haline contraction
+# coefficients for temperature and salinity.
+#
 # ## Boundary conditions
 #
-# Here we define `Flux` boundary conditions at the surface for `u`, `T`, and `S`,
-# and a `Gradient` boundary condition on `T` that maintains a constant stratification
-# at the bottom. Our flux boundary condition for salinity uses a function that calculates
-# the salinity flux in terms of the evaporation rate.
+# We calculate the surface temperature flux associated with surface heating of
+# 200 W m⁻², reference density `ρₒ`, and heat capacity `cᴾ`,
 
-grid = RegularCartesianGrid(size=(Nz, Nz, Nz), extent=(Δz*Nz, Δz*Nz, Δz*Nz))
+Qʰ = 200  # W m⁻², surface _heat_ flux
+ρₒ = 1026 # kg m⁻³, average density at the surface of the world ocean
+cᴾ = 3991 # J K⁻¹ kg⁻¹, typical heat capacity for seawater
 
-u_bcs = UVelocityBoundaryConditions(grid, top = BoundaryCondition(Flux, Qᵘ))
+Qᵀ = Qʰ / (ρₒ * cᴾ) # K m s⁻¹, surface _temperature_ flux
 
-T_bcs = TracerBoundaryConditions(grid,    top = BoundaryCondition(Flux, Qᵀ),
-                                       bottom = BoundaryCondition(Gradient, ∂T∂z))
+# Finally, we impose a temperature gradient `dTdz` both initially and at the
+# bottom of the domain, culminating in the boundary conditions on temperature,
 
-## Salinity flux: Qˢ = - E * S
-@inline Qˢ(i, j, grid, clock, state, p) = @inbounds -p.evaporation * state.tracers.S[i, j, 1]
+dTdz = 0.01 # K m⁻¹
 
-S_bcs = TracerBoundaryConditions(grid, top = ParameterizedBoundaryCondition(Flux, Qˢ, (evaporation=evaporation,)))
+T_bcs = FieldBoundaryConditions(top = FluxBoundaryCondition(Qᵀ),
+                                bottom = GradientBoundaryCondition(dTdz))
+
+# Note that a positive temperature flux at the surface of the ocean
+# implies cooling. This is because a positive temperature flux implies
+# that temperature is fluxed upwards, out of the ocean.
+#
+# For the velocity field, we imagine a wind blowing over the ocean surface
+# with an average velocity at 10 meters `u₁₀`, and use a drag coefficient `cᴰ`
+# to estimate the kinematic stress (that is, stress divided by density) exerted
+# by the wind on the ocean:
+
+u₁₀ = 10    # m s⁻¹, average wind velocity 10 meters above the ocean
+cᴰ = 2.5e-3 # dimensionless drag coefficient
+ρₐ = 1.225  # kg m⁻³, average density of air at sea-level
+
+Qᵘ = - ρₐ / ρₒ * cᴰ * u₁₀ * abs(u₁₀) # m² s⁻²
+
+# The boundary conditions on `u` are thus
+
+u_bcs = FieldBoundaryConditions(top = FluxBoundaryCondition(Qᵘ))
+
+# For salinity, `S`, we impose an evaporative flux of the form
+
+@inline Qˢ(x, y, t, S, evaporation_rate) = - evaporation_rate * S # [salinity unit] m s⁻¹
 nothing # hide
+
+# where `S` is salinity. We use an evporation rate of 1 millimeter per hour,
+
+evaporation_rate = 1e-3 / hour # m s⁻¹
+
+# We build the `Flux` evaporation `BoundaryCondition` with the function `Qˢ`,
+# indicating that `Qˢ` depends on salinity `S` and passing
+# the parameter `evaporation_rate`,
+
+evaporation_bc = FluxBoundaryCondition(Qˢ, field_dependencies=:S, parameters=evaporation_rate)
+
+# The full salinity boundary conditions are
+
+S_bcs = FieldBoundaryConditions(top=evaporation_bc)
 
 # ## Model instantiation
 #
-# We instantiate a horizontally-periodic `Model` on the CPU with on a `RegularCartesianGrid`,
-# using a `FPlane` model for rotation (constant rotation rate), a linear equation
-# of state for temperature and salinity, the Anisotropic Minimum Dissipation closure
-# to model the effects of unresolved turbulence, and the previously defined boundary
-# conditions for `u`, `T`, and `S`.
+# We fill in the final details of the model here: upwind-biased 5th-order
+# advection for momentum and tracers, 3rd-order Runge-Kutta time-stepping,
+# Coriolis forces, and the `AnisotropicMinimumDissipation` closure
+# for large eddy simulation to model the effect of turbulent motions at
+# scales smaller than the grid scale that we cannot explicitly resolve.
 
-model = IncompressibleModel(       architecture = CPU(),
-                                           grid = grid,
-                                       coriolis = FPlane(f=f),
-                                       buoyancy = SeawaterBuoyancy(equation_of_state=LinearEquationOfState(α=α, β=β)),
-                                        closure = AnisotropicMinimumDissipation(),
+model = NonhydrostaticModel(
+                            advection = UpwindBiasedFifthOrder(),
+                            timestepper = :RungeKutta3,
+                            grid = grid,
+                            tracers = (:T, :S),
+                            coriolis = FPlane(f=1e-4),
+                            buoyancy = buoyancy,
+                            closure = AnisotropicMinimumDissipation(),
                             boundary_conditions = (u=u_bcs, T=T_bcs, S=S_bcs))
-nothing # hide
 
 # Notes:
 #
 # * To use the Smagorinsky-Lilly turbulence closure (with a constant model coefficient) rather than
-#   `AnisotropicMinimumDissipation`, use `closure = ConstantSmagorinsky()` in the model constructor.
+#   `AnisotropicMinimumDissipation`, use `closure = SmagorinskyLilly()` in the model constructor.
 #
-# * To change the `architecture` to `GPU`, replace the `architecture` keyword argument with
-#   `architecture = GPU()``
+# * To change the `architecture` to `GPU`, replace `architecture = CPU()` with
+#   `architecture = GPU()`.
 
 # ## Initial conditions
 #
@@ -108,76 +168,138 @@ nothing # hide
 ## Random noise damped at top and bottom
 Ξ(z) = randn() * z / model.grid.Lz * (1 + z / model.grid.Lz) # noise
 
-## Temperature initial condition: a stable density tradient with random noise superposed.
-T₀(x, y, z) = 20 + ∂T∂z * z + ∂T∂z * model.grid.Lz * 1e-6 * Ξ(z)
+## Temperature initial condition: a stable density gradient with random noise superposed.
+Tᵢ(x, y, z) = 20 + dTdz * z + dTdz * model.grid.Lz * 1e-6 * Ξ(z)
 
 ## Velocity initial condition: random noise scaled by the friction velocity.
-u₀(x, y, z) = sqrt(abs(Qᵘ)) * 1e-1 * Ξ(z)
+uᵢ(x, y, z) = sqrt(abs(Qᵘ)) * 1e-3 * Ξ(z)
 
-set!(model, u=u₀, w=u₀, T=T₀, S=35)
+## `set!` the `model` fields using functions or constants:
+set!(model, u=uᵢ, w=uᵢ, T=Tᵢ, S=35)
 
-# ## Set up output
+# ## Setting up a simulation
 #
-# We set up an output writer that saves all velocity fields, tracer fields, and the subgrid
-# turbulent diffusivity associated with `model.closure`. The `prefix` keyword argument
+# We set-up a simulation with an initial time-step of 10 seconds
+# that stops at 40 minutes, with adaptive time-stepping and progress printing.
+
+simulation = Simulation(model, Δt=10.0, stop_time=40minutes)
+
+# The `TimeStepWizard` helps ensure stable time-stepping
+# with a Courant-Freidrichs-Lewy (CFL) number of 1.0.
+
+wizard = TimeStepWizard(cfl=1.0, max_change=1.1, max_Δt=1minute)
+
+simulation.callbacks[:wizard] = Callback(wizard, IterationInterval(10))
+
+# Nice progress messaging is helpful:
+
+## Print a progress message
+progress_message(sim) = @printf("Iteration: %04d, time: %s, Δt: %s, max(|w|) = %.1e ms⁻¹, wall time: %s\n",
+                                iteration(sim),
+                                prettytime(sim),
+                                prettytime(sim.Δt),
+                                maximum(abs, sim.model.velocities.w),
+                                prettytime(sim.run_wall_time))
+
+simulation.callbacks[:progress] = Callback(progress_message, IterationInterval(10))
+
+# We then set up the simulation:
+
+# ## Output
+#
+# We use the `JLD2OutputWriter` to save ``x, z`` slices of the velocity fields,
+# tracer fields, and eddy diffusivities. The `prefix` keyword argument
 # to `JLD2OutputWriter` indicates that output will be saved in
 # `ocean_wind_mixing_and_convection.jld2`.
 
-## Create a NamedTuple containing all the fields to be outputted.
-fields_to_output = merge(model.velocities, model.tracers, (νₑ=model.diffusivities.νₑ,))
-nothing # hide
+## Create a NamedTuple with eddy viscosity
+eddy_viscosity = (; νₑ = model.diffusivity_fields.νₑ)
 
-## Instantiate a JLD2OutputWriter to write fields. We will add it to the simulation before
-## running it.
-field_writer = JLD2OutputWriter(model, FieldOutputs(fields_to_output); interval=hour/4,
-                                prefix="ocean_wind_mixing_and_convection", force=true)
+simulation.output_writers[:slices] =
+    JLD2OutputWriter(model, merge(model.velocities, model.tracers, eddy_viscosity),
+                           prefix = "ocean_wind_mixing_and_convection",
+                     field_slicer = FieldSlicer(j=Int(grid.Ny/2)),
+                         schedule = TimeInterval(1minute),
+                            force = true)
 
-# ## Running the simulation
+# We're ready:
+
+run!(simulation)
+
+# ## Turbulence visualization
 #
-# To run the simulation, we instantiate a `TimeStepWizard` to ensure stable time-stepping
-# with a Courant-Freidrichs-Lewy (CFL) number of 0.2.
+# We animate the data saved in `ocean_wind_mixing_and_convection.jld2`.
+# We prepare for animating the flow by creating coordinate arrays,
+# opening the file, building a vector of the iterations that we saved
+# data at, and defining functions for computing colorbar limits:
 
-wizard = TimeStepWizard(cfl=0.2, Δt=1.0, max_change=1.1, max_Δt=5.0)
-nothing # hide
+## Coordinate arrays
+xw, yw, zw = nodes(model.velocities.w)
+xT, yT, zT = nodes(model.tracers.T)
 
-# A diagnostic that returns the maximum absolute value of `w` by calling
-# `wmax(model)`:
+## Open the file with our data
+file = jldopen(simulation.output_writers[:slices].filepath)
 
-wmax = FieldMaximum(abs, model.velocities.w)
-nothing # hide
+## Extract a vector of iterations
+iterations = parse.(Int, keys(file["timeseries/t"]))
 
-# Finally, we set up and run the the simulation.
-
-simulation = Simulation(model, Δt=wizard, stop_iteration=0, progress_frequency=10)
-simulation.output_writers[:fields] = field_writer
-
-anim = @animate for i in 1:100
-    ## Run the simulation forward
-    simulation.stop_iteration += 10
-    walltime = @elapsed run!(simulation)
-
-    ## Print a progress message
-    @printf("i: %04d, t: %s, Δt: %s, wmax = %.1e ms⁻¹, wall time: %s\n",
-            model.clock.iteration, prettytime(model.clock.time), prettytime(wizard.Δt),
-            wmax(model), prettytime(walltime))
-
-    ## Coordinate arrays for plotting
-    xC, zF, zC = xnodes(Cell, grid)[:], znodes(Face, grid)[:], znodes(Cell, grid)[:]
-
-    ## Slices to plots.
-    jhalf = floor(Int, model.grid.Ny/2)
-    w = Array(interior(model.velocities.w))[:, jhalf, :]
-    T = Array(interior(model.tracers.T))[:, jhalf, :]
-    S = Array(interior(model.tracers.S))[:, jhalf, :]
-
-    ## Plot the slices.
-    w_plot = heatmap(xC, zF, w', xlabel="x (m)", ylabel="z (m)", color=:balance, clims=(-3e-2, 3e-2))
-    T_plot = heatmap(xC, zC, T', xlabel="x (m)", ylabel="z (m)", color=:thermal, clims=(19.75, 20.0))
-    S_plot = heatmap(xC, zC, S', xlabel="x (m)", ylabel="z (m)", color=:haline,  clims=(34.99, 35.01))
-
-    ## Arrange the plots side-by-side.
-    plot(w_plot, T_plot, S_plot, layout=(1, 3), size=(1600, 400),
-         title=["vertical velocity (m/s)" "temperature (C)" "salinity (g/kg)"])
+""" Returns colorbar levels equispaced between `(-clim, clim)` and encompassing the extrema of `c`. """
+function divergent_levels(c, clim, nlevels=21)
+    cmax = maximum(abs, c)
+    levels = clim > cmax ? range(-clim, stop=clim, length=nlevels) : range(-cmax, stop=cmax, length=nlevels)
+    return (levels[1], levels[end]), levels
 end
 
-mp4(anim, "ocean_wind_mixing_and_convection.mp4", fps = 15) # hide
+""" Returns colorbar levels equispaced between `clims` and encompassing the extrema of `c`."""
+function sequential_levels(c, clims, nlevels=20)
+    levels = range(clims[1], stop=clims[2], length=nlevels)
+    cmin, cmax = minimum(c), maximum(c)
+    cmin < clims[1] && (levels = vcat([cmin], levels))
+    cmax > clims[2] && (levels = vcat(levels, [cmax]))
+    return clims, levels
+end
+nothing # hide
+
+# We start the animation at `t = 10minutes` since things are pretty boring till then:
+
+times = [file["timeseries/t/$iter"] for iter in iterations]
+intro = searchsortedfirst(times, 10minutes)
+
+anim = @animate for (i, iter) in enumerate(iterations[intro:end])
+
+    @info "Drawing frame $i from iteration $iter..."
+
+    t = file["timeseries/t/$iter"]
+    w = file["timeseries/w/$iter"][:, 1, :]
+    T = file["timeseries/T/$iter"][:, 1, :]
+    S = file["timeseries/S/$iter"][:, 1, :]
+    νₑ = file["timeseries/νₑ/$iter"][:, 1, :]
+
+    wlims, wlevels = divergent_levels(w, 2e-2)
+    Tlims, Tlevels = sequential_levels(T, (19.7, 19.99))
+    Slims, Slevels = sequential_levels(S, (35, 35.005))
+    νlims, νlevels = sequential_levels(νₑ, (1e-6, 5e-3))
+
+    kwargs = (linewidth=0, xlabel="x (m)", ylabel="z (m)", aspectratio=1,
+              xlims=(0, grid.Lx), ylims=(-grid.Lz, 0))
+
+    w_plot = contourf(xw, zw, w'; color=:balance, clims=wlims, levels=wlevels, kwargs...)
+    T_plot = contourf(xT, zT, T'; color=:thermal, clims=Tlims, levels=Tlevels, kwargs...)
+    S_plot = contourf(xT, zT, S'; color=:haline,  clims=Slims, levels=Slevels, kwargs...)
+
+    ## We use a heatmap for the eddy viscosity to observe how it varies on the grid scale.
+    ν_plot = heatmap(xT, zT, νₑ'; color=:thermal, clims=νlims, levels=νlevels, kwargs...)
+
+    w_title = @sprintf("vertical velocity (m s⁻¹), t = %s", prettytime(t))
+    T_title = "temperature (ᵒC)"
+    S_title = "salinity (g kg⁻¹)"
+    ν_title = "eddy viscosity (m² s⁻¹)"
+
+    ## Arrange the plots side-by-side.
+    plot(w_plot, T_plot, S_plot, ν_plot, layout=(2, 2), size=(1200, 600),
+         title=[w_title T_title S_title ν_title])
+
+    iter == iterations[end] && close(file)
+end
+
+mp4(anim, "ocean_wind_mixing_and_convection.mp4", fps = 8) # hide

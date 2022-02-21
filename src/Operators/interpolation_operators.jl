@@ -1,9 +1,4 @@
-#####
-##### Convinient aliases
-#####
-
-const AG  = AbstractGrid
-const RCG = RegularCartesianGrid
+using Oceananigans.Grids: Flat
 
 #####
 ##### Base interpolation operators
@@ -32,26 +27,15 @@ const RCG = RegularCartesianGrid
 @inline ℑzᵃᵃᶠ(i, j, k, grid::AG{FT}, f::F, args...) where {FT, F<:Function} = FT(0.5) * (f(i, j, k-1, grid, args...) + f(i, j, k,   grid, args...))
 
 #####
-##### "Flux interpolation" operators of the form ℑ(A*f) where A is an area and f is an array.
-#####
-
-@inline ℑᴶxᶜᵃᵃ(i, j, k, grid, u) = ℑxᶜᵃᵃ(i, j, k, grid, Ax_u, u)
-@inline ℑᴶxᶠᵃᵃ(i, j, k, grid, c) = ℑxᶠᵃᵃ(i, j, k, grid, Ax_c, c)
-@inline ℑᴶyᵃᶜᵃ(i, j, k, grid, v) = ℑyᵃᶜᵃ(i, j, k, grid, Ay_v, v)
-@inline ℑᴶyᵃᶠᵃ(i, j, k, grid, c) = ℑyᵃᶠᵃ(i, j, k, grid, Ay_c, c)
-@inline ℑᴶzᵃᵃᶜ(i, j, k, grid, w) = ℑzᵃᵃᶜ(i, j, k, grid, Az_w, w)
-@inline ℑᴶzᵃᵃᶠ(i, j, k, grid, c) = ℑzᵃᵃᶠ(i, j, k, grid, Az_c, c)
-
-#####
 ##### Convenience operators for "interpolating constants"
 #####
 
-@inline ℑxᶠᵃᵃ(i, j, k, grid, f::Number, args...) = f
-@inline ℑxᶜᵃᵃ(i, j, k, grid, f::Number, args...) = f
-@inline ℑyᵃᶠᵃ(i, j, k, grid, f::Number, args...) = f
-@inline ℑyᵃᶜᵃ(i, j, k, grid, f::Number, args...) = f
-@inline ℑzᵃᵃᶠ(i, j, k, grid, f::Number, args...) = f
-@inline ℑzᵃᵃᶜ(i, j, k, grid, f::Number, args...) = f
+@inline ℑxᶠᵃᵃ(i, j, k, grid::AG, f::Number, args...) = f
+@inline ℑxᶜᵃᵃ(i, j, k, grid::AG, f::Number, args...) = f
+@inline ℑyᵃᶠᵃ(i, j, k, grid::AG, f::Number, args...) = f
+@inline ℑyᵃᶜᵃ(i, j, k, grid::AG, f::Number, args...) = f
+@inline ℑzᵃᵃᶠ(i, j, k, grid::AG, f::Number, args...) = f
+@inline ℑzᵃᵃᶜ(i, j, k, grid::AG, f::Number, args...) = f
 
 #####
 ##### Double interpolation
@@ -89,3 +73,26 @@ const RCG = RegularCartesianGrid
 @inline ℑxᶠᵃᵃ(i, j, k, grid::AG{FT}, c, args...) where FT = @inbounds FT(0.5) * (c[i-1, j, k] + c[i, j, k])
 @inline ℑyᵃᶠᵃ(i, j, k, grid::AG{FT}, c, args...) where FT = @inbounds FT(0.5) * (c[i, j-1, k] + c[i, j, k])
 @inline ℑzᵃᵃᶠ(i, j, k, grid::AG{FT}, c, args...) where FT = @inbounds FT(0.5) * (c[i, j, k-1] + c[i, j, k])
+
+#####
+##### Support for Flat Earths
+#####
+
+@inline ℑxᶜᵃᵃ(i, j, k, grid::AG{FT, Flat, TY, TZ}, u) where {FT, TY, TZ} = @inbounds u[i, j, k]
+@inline ℑxᶠᵃᵃ(i, j, k, grid::AG{FT, Flat, TY, TZ}, c) where {FT, TY, TZ} = @inbounds c[i, j, k]
+
+@inline ℑyᵃᶜᵃ(i, j, k, grid::AG{FT, TX, Flat, TZ}, w) where {FT, TX, TZ} = @inbounds w[i, j, k]
+@inline ℑyᵃᶠᵃ(i, j, k, grid::AG{FT, TX, Flat, TZ}, c) where {FT, TX, TZ} = @inbounds c[i, j, k]
+
+@inline ℑzᵃᵃᶜ(i, j, k, grid::AG{FT, TX, TY, Flat}, w) where {FT, TX, TY} = @inbounds w[i, j, k]
+@inline ℑzᵃᵃᶠ(i, j, k, grid::AG{FT, TX, TY, Flat}, c) where {FT, TX, TY} = @inbounds c[i, j, k]
+
+
+@inline ℑxᶜᵃᵃ(i, j, k, grid::AG{FT, Flat, TY, TZ}, f::F, args...) where {FT, TY, TZ, F<:Function} = f(i, j, k, grid, args...)
+@inline ℑxᶠᵃᵃ(i, j, k, grid::AG{FT, Flat, TY, TZ}, f::F, args...) where {FT, TY, TZ, F<:Function} = f(i, j, k, grid, args...)
+
+@inline ℑyᵃᶜᵃ(i, j, k, grid::AG{FT, TX, Flat, TZ}, f::F, args...) where {FT, TX, TZ, F<:Function} = f(i, j, k, grid, args...)
+@inline ℑyᵃᶠᵃ(i, j, k, grid::AG{FT, TX, Flat, TZ}, f::F, args...) where {FT, TX, TZ, F<:Function} = f(i, j, k, grid, args...)
+
+@inline ℑzᵃᵃᶜ(i, j, k, grid::AG{FT, TX, TY, Flat}, f::F, args...) where {FT, TX, TY, F<:Function} = f(i, j, k, grid, args...)
+@inline ℑzᵃᵃᶠ(i, j, k, grid::AG{FT, TX, TY, Flat}, f::F, args...) where {FT, TX, TY, F<:Function} = f(i, j, k, grid, args...)

@@ -1,28 +1,41 @@
 module Utils
 
-export
-    second, minute, hour, day, meter, kilometer,
-    KiB, MiB, GiB, TiB,
-    @loop_xyz, @loop_xy, @loop_xz, @loop_yz,
-    launch_config,
-    cell_advection_timescale,
-    TimeStepWizard, update_Δt!,
-    prettytime, pretty_filesize,
-    tupleit, parenttuple, datatuple, datatuples,
-    validate_interval, time_to_run,
-    ordered_dict_show,
-    with_tracers
+export launch_config, work_layout, launch!
+export cell_advection_timescale
+export TimeStepWizard, update_Δt!
+export prettytime, pretty_filesize
+export tupleit, parenttuple, datatuple, datatuples
+export validate_intervals, time_to_run
+export ordered_dict_show
+export with_tracers
+export versioninfo_with_gpu, oceananigans_versioninfo
+export instantiate
+export TimeInterval, IterationInterval, WallTimeInterval, SpecifiedTimes, AndSchedule, OrSchedule
 
-include("adapt_structure.jl")
-include("units.jl")
-include("loop_macros.jl")
-include("launch_config.jl")
+import CUDA  # To avoid name conflicts
+
+#####
+##### Misc. small utils
+#####
+
+instantiate(x) = x
+instantiate(X::DataType) = X()
+
+#####
+##### Include utils
+#####
+
+include("prettysummary.jl")
+include("kernel_launching.jl")
 include("cell_advection_timescale.jl")
-include("pretty_time.jl")
+include("prettytime.jl")
 include("pretty_filesize.jl")
 include("tuple_utils.jl")
 include("output_writer_diagnostic_utils.jl")
 include("ordered_dict_show.jl")
 include("with_tracers.jl")
+include("versioninfo.jl")
+include("schedules.jl")
+include("user_function_arguments.jl")
 
 end

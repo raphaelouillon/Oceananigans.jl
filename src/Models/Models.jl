@@ -1,39 +1,33 @@
 module Models
 
-export IncompressibleModel, NonDimensionalModel, Clock, tick!, state
+export
+    NonhydrostaticModel, ShallowWaterModel,
+    HydrostaticFreeSurfaceModel, VectorInvariant,
+    ExplicitFreeSurface, ImplicitFreeSurface, SplitExplicitFreeSurface,
+    HydrostaticSphericalCoriolis, VectorInvariantEnstrophyConserving,
+    PrescribedVelocityFields, PressureField
 
-using Adapt
+using Oceananigans: AbstractModel
 
-using Oceananigans.Architectures
-using Oceananigans.Fields
-using Oceananigans.Coriolis
-using Oceananigans.Buoyancy
-using Oceananigans.TurbulenceClosures
-using Oceananigans.BoundaryConditions
-using Oceananigans.Solvers
-using Oceananigans.Forcing
-using Oceananigans.Utils
+import Oceananigans.Architectures: device_event
 
-"""
-    AbstractModel
+device_event(model::AbstractModel) = device_event(model.architecture)
 
-Abstract supertype for models.
-"""
-abstract type AbstractModel end
+abstract type AbstractNonhydrostaticModel{TS} <: AbstractModel{TS} end
 
-"""
-    state(model)
+include("NonhydrostaticModels/NonhydrostaticModels.jl")
+include("HydrostaticFreeSurfaceModels/HydrostaticFreeSurfaceModels.jl")
+include("ShallowWaterModels/ShallowWaterModels.jl")
 
-Returns a `NamedTuple` with fields `velocities, tracers, diffusivities, tendencies` 
-corresponding to `NamedTuple`s of `OffsetArray`s that reference each of the field's data.
-"""
-@inline state(model) = (   velocities = datatuple(model.velocities),
-                              tracers = datatuple(model.tracers),
-                        diffusivities = datatuple(model.diffusivities))
+using .NonhydrostaticModels: NonhydrostaticModel, PressureField
 
-include("clock.jl")
-include("incompressible_model.jl")
-include("non_dimensional_model.jl")
-include("show_models.jl")
+using .HydrostaticFreeSurfaceModels:
+    HydrostaticFreeSurfaceModel, VectorInvariant,
+    ExplicitFreeSurface, ImplicitFreeSurface, SplitExplicitFreeSurface,
+    HydrostaticSphericalCoriolis,
+    VectorInvariantEnstrophyConserving, VectorInvariantEnergyConserving,
+    PrescribedVelocityFields
+
+using .ShallowWaterModels: ShallowWaterModel
 
 end

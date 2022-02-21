@@ -1,3 +1,9 @@
+include("dependencies_for_runtests.jl")
+
+using Oceananigans.Operators: ℑxyᶜᶠᵃ, ℑxyᶠᶜᵃ
+using Oceananigans.Fields: compute_at!
+using Oceananigans.BuoyancyModels: BuoyancyField
+
 function simple_binary_operation(op, a, b, num1, num2)
     a_b = op(a, b)
     interior(a) .= num1
@@ -16,10 +22,13 @@ end
 function x_derivative(a)
     dx_a = ∂x(a)
 
+    arch = architecture(a)
+    one_two_three = arch_array(arch, [1, 2, 3])
+
     for k in 1:3
-        interior(a)[:, 1, k] .= [1, 2, 3]
-        interior(a)[:, 2, k] .= [1, 2, 3]
-        interior(a)[:, 3, k] .= [1, 2, 3]
+        interior(a)[:, 1, k] .= one_two_three
+        interior(a)[:, 2, k] .= one_two_three
+        interior(a)[:, 3, k] .= one_two_three
     end
 
     return dx_a[2, 2, 2] == 1
@@ -28,10 +37,13 @@ end
 function y_derivative(a)
     dy_a = ∂y(a)
 
+    arch = architecture(a)
+    one_three_five = arch_array(arch, [1, 3, 5])
+
     for k in 1:3
-        interior(a)[1, :, k] .= [1, 3, 5]
-        interior(a)[2, :, k] .= [1, 3, 5]
-        interior(a)[3, :, k] .= [1, 3, 5]
+        interior(a)[1, :, k] .= one_three_five
+        interior(a)[2, :, k] .= one_three_five
+        interior(a)[3, :, k] .= one_three_five
     end
 
     return dy_a[2, 2, 2] == 2
@@ -40,24 +52,29 @@ end
 function z_derivative(a)
     dz_a = ∂z(a)
 
+    arch = architecture(a)
+    one_four_seven = arch_array(arch, [1, 4, 7])
+
     for k in 1:3
-        interior(a)[1, k, :] .= [1, 4, 7]
-        interior(a)[2, k, :] .= [1, 4, 7]
-        interior(a)[3, k, :] .= [1, 4, 7]
+        interior(a)[1, k, :] .= one_four_seven
+        interior(a)[2, k, :] .= one_four_seven
+        interior(a)[3, k, :] .= one_four_seven
     end
 
     return dz_a[2, 2, 2] == 3
 end
 
-function x_derivative_cell(FT, arch)
-    grid = RegularCartesianGrid(FT, size=(3, 3, 3), extent=(3, 3, 3))
-    a = Field(Cell, Cell, Cell, arch, grid, nothing)
+function x_derivative_cell(arch)
+    grid = RectilinearGrid(arch, size=(3, 3, 3), extent=(3, 3, 3))
+    a = Field{Center, Center, Center}(grid)
     dx_a = ∂x(a)
 
+    one_four_four = arch_array(arch, [1, 4, 4])
+
     for k in 1:3
-        interior(a)[:, 1, k] .= [1, 4, 4]
-        interior(a)[:, 2, k] .= [1, 4, 4]
-        interior(a)[:, 3, k] .= [1, 4, 4]
+        interior(a)[:, 1, k] .= one_four_four 
+        interior(a)[:, 2, k] .= one_four_four 
+        interior(a)[:, 3, k] .= one_four_four 
     end
 
     return dx_a[2, 2, 2] == 3
@@ -68,186 +85,17 @@ function times_x_derivative(a, b, location, i, j, k, answer)
     return a∇b[i, j, k] == answer
 end
 
-function compute_derivative(model, ∂)
-    T, S = model.tracers
-    S.data.parent .= π
+for arch in archs
+    @testset "Abstract operations [$(typeof(arch))]" begin
+        @info "Testing abstract operations [$(typeof(arch))]..."
 
-    computation = Computation(∂(S), model.pressures.pHY′)
-    compute!(computation)
-    result = Array(interior(computation.result))
+        grid = RectilinearGrid(arch, size=(3, 3, 3), extent=(3, 3, 3))
+        u, v, w = VelocityFields(grid)
+        c = Field{Center, Center, Center}(grid)
 
-    return all(result .≈ zero(eltype(model.grid)))
-end
-
-function compute_unary(unary, model)
-    set!(model; S=π)
-    T, S = model.tracers
-
-    computation = Computation(unary(S), model.pressures.pHY′)
-    compute!(computation)
-    result = Array(interior(computation.result))
-    return all(result .≈ unary(eltype(model.grid)(π)))
-end
-
-function compute_plus(model)
-    set!(model; S=π, T=42)
-    T, S = model.tracers
-
-    computation = Computation(S + T, model.pressures.pHY′)
-    compute!(computation)
-    result = Array(interior(computation.result))
-
-    return all(result .≈ eltype(model.grid)(π+42))
-end
-
-function compute_many_plus(model)
-    set!(model; u=2, S=π, T=42)
-    T, S = model.tracers
-    u, v, w = model.velocities
-
-    computation = Computation(@at((Cell, Cell, Cell), u + T + S), model.pressures.pHY′)
-    compute!(computation)
-    result = Array(interior(computation.result))
-
-    return all(result .≈ eltype(model.grid)(2+π+42))
-end
-
-function compute_minus(model)
-    set!(model; S=π, T=42)
-    T, S = model.tracers
-
-    computation = Computation(S - T, model.pressures.pHY′)
-    compute!(computation)
-    result = Array(interior(computation.result))
-
-    return all(result .≈ eltype(model.grid)(π-42))
-end
-
-function compute_times(model)
-    set!(model; S=π, T=42)
-    T, S = model.tracers
-
-    computation = Computation(S * T, model.pressures.pHY′)
-    compute!(computation)
-    result = Array(interior(computation.result))
-
-    return all(result .≈ eltype(model.grid)(π*42))
-end
-
-function compute_kinetic_energy(model)
-    u, v, w = model.velocities
-    set!(u, 1)
-    set!(v, 2)
-    set!(w, 3)
-
-    kinetic_energy = @at (Cell, Cell, Cell) (u^2 + v^2 + w^2) / 2
-    computation = Computation(kinetic_energy, model.pressures.pHY′)
-    compute!(computation)
-    result = Array(interior(computation.result))
-
-    return all(result .≈ 7)
-end
-
-function horizontal_average_of_plus(model)
-    S₀(x, y, z) = sin(π*z)
-    T₀(x, y, z) = 42*z
-    set!(model; S=S₀, T=T₀)
-    T, S = model.tracers
-
-    ST = HorizontalAverage(S + T, model)
-    computed_profile = ST(model)
-
-    zC = znodes(Cell, model.grid)
-    correct_profile = @. sin(π * zC) + 42 * zC
-
-    return all(computed_profile[2:end-1] .≈ correct_profile)
-end
-
-function horizontal_average_of_minus(model)
-    S₀(x, y, z) = sin(π*z)
-    T₀(x, y, z) = 42*z
-    set!(model; S=S₀, T=T₀)
-    T, S = model.tracers
-
-    ST = HorizontalAverage(S - T, model)
-    computed_profile = ST(model)
-
-    zC = znodes(Cell, model.grid)
-    correct_profile = @. sin(π * zC) - 42 * zC
-
-    return all(computed_profile[2:end-1] .≈ correct_profile)
-end
-
-function horizontal_average_of_times(model)
-    S₀(x, y, z) = sin(π*z)
-    T₀(x, y, z) = 42*z
-    set!(model; S=S₀, T=T₀)
-    T, S = model.tracers
-
-    ST = HorizontalAverage(S * T, model)
-    computed_profile = ST(model)
-
-    zC = znodes(Cell, model.grid)
-    correct_profile = @. sin(π * zC) * 42 * zC
-
-    return all(computed_profile[2:end-1] .≈ correct_profile)
-end
-
-function multiplication_and_derivative_ccf(model)
-    w₀(x, y, z) = sin(π * z)
-    T₀(x, y, z) = 42 * z
-    set!(model; w=w₀, T=T₀)
-
-    w = model.velocities.w
-    T = model.tracers.T
-
-    wT = HorizontalAverage(w * ∂z(T), model)
-    computed_profile = wT(model)
-
-    zF = znodes(Face, model.grid)
-    correct_profile = @. 42 * sin(π * zF)
-
-    # Omit both halos and boundary points
-    return all(computed_profile[3:end-1] .≈ correct_profile[2:end-1])
-end
-
-const C = Cell
-const F = Face
-
-function multiplication_and_derivative_ccc(model)
-    w₀(x, y, z) = sin(π*z)
-    T₀(x, y, z) = 42*z
-    set!(model; w=w₀, T=T₀)
-
-    w = model.velocities.w
-    T = model.tracers.T
-
-    wT_ccc = @at (C, C, C) w * ∂z(T)
-    wT_ccc_avg = HorizontalAverage(wT_ccc, model)
-    computed_profile_ccc = wT_ccc_avg(model)
-
-    zF = znodes(Face, model.grid)
-    sinusoid = sin.(π * zF)
-    interped_sin = [(sinusoid[k] + sinusoid[k+1]) / 2 for k in 1:model.grid.Nz]
-    correct_profile = interped_sin .* 42
-
-    # Computed profile includes halos.
-    return all(computed_profile_ccc[:][3:end-2] .≈ correct_profile[2:end-1])
-end
-
-@testset "Abstract operations" begin
-    @info "Testing abstract operations..."
-
-    for FT in float_types
-        arch = CPU()
-        grid = RegularCartesianGrid(FT, size=(3, 3, 3), extent=(3, 3, 3))
-        u, v, w = VelocityFields(arch, grid)
-        c = Field(Cell, Cell, Cell, arch, grid, nothing)
-
-        @testset "Unary operations and derivatives [$FT]" begin
+        @testset "Unary operations and derivatives [$(typeof(arch))]" begin
             for ψ in (u, v, w, c)
-                for op_symbol in Oceananigans.AbstractOperations.unary_operators
-                    op = eval(op_symbol)
+                for op in (sqrt, sin, cos, exp, tanh)
                     @test typeof(op(ψ)[2, 2, 2]) <: Number
                 end
 
@@ -258,7 +106,7 @@ end
             end
         end
 
-        @testset "Binary operations [$FT]" begin
+        @testset "Binary operations [$(typeof(arch))]" begin
             generic_function(x, y, z) = x + y + z
             for (ψ, ϕ) in ((u, v), (u, w), (v, w), (u, c), (generic_function, c), (u, generic_function))
                 for op_symbol in Oceananigans.AbstractOperations.binary_operators
@@ -268,27 +116,39 @@ end
             end
         end
 
-        @testset "Multiary operations [$FT]" begin
+        @testset "Multiary operations [$(typeof(arch))]" begin
             generic_function(x, y, z) = x + y + z
             for (ψ, ϕ, σ) in ((u, v, w), (u, v, c), (u, v, generic_function))
                 for op_symbol in Oceananigans.AbstractOperations.multiary_operators
                     op = eval(op_symbol)
-                    @test typeof(op((Cell, Cell, Cell), ψ, ϕ, σ)[2, 2, 2]) <: Number
+                    @test typeof(op((Center, Center, Center), ψ, ϕ, σ)[2, 2, 2]) <: Number
                 end
             end
         end
-    end
 
-    @testset "Fidelity of simple binary operations" begin
-        arch = CPU()
-        @info "  Testing simple binary operations..."
-        for FT in float_types
-            num1 = FT(π)
-            num2 = FT(42)
-            grid = RegularCartesianGrid(FT, size=(3, 3, 3), extent=(3, 3, 3))
+        @testset "KernelFunctionOperations [$(typeof(arch))]" begin
+            trivial_kernel_function(i, j, k, grid) = 1
+            op = KernelFunctionOperation{Center, Center, Center}(trivial_kernel_function, grid)
+            @test op isa KernelFunctionOperation
 
-            u, v, w = VelocityFields(arch, grid)
-            T, S = TracerFields(arch, grid, (:T, :S))
+            less_trivial_kernel_function(i, j, k, grid, u, v) = @inbounds u[i, j, k] * ℑxyᶠᶜᵃ(i, j, k, grid, v)
+            op = KernelFunctionOperation{Face, Center, Center}(less_trivial_kernel_function, grid, computed_dependencies=(u, v))
+            @test op isa KernelFunctionOperation
+
+            still_fairly_trivial_kernel_function(i, j, k, grid, u, v, μ) = @inbounds μ * ℑxyᶜᶠᵃ(i, j, k, grid, u) * v[i, j, k]
+            op = KernelFunctionOperation{Center, Face, Center}(still_fairly_trivial_kernel_function, grid,
+                                                               computed_dependencies=(u, v), parameters=0.1)
+            @test op isa KernelFunctionOperation
+        end
+
+        @testset "Fidelity of simple binary operations" begin
+            @info "  Testing simple binary operations..."
+            num1 = Float64(π)
+            num2 = Float64(42)
+            grid = RectilinearGrid(arch, size=(3, 3, 3), extent=(3, 3, 3))
+
+            u, v, w = VelocityFields(grid)
+            T, S = TracerFields((:T, :S), grid)
 
             for op in (+, *, -, /)
                 @test simple_binary_operation(op, u, v, num1, num2)
@@ -298,33 +158,29 @@ end
             end
             @test three_field_addition(u, v, w, num1, num2)
         end
-    end
 
-    @testset "Derivatives" begin
-        arch = CPU()
-        @info "  Testing derivatives..."
-        for FT in float_types
-            grid = RegularCartesianGrid(FT, size=(3, 3, 3), extent=(3, 3, 3),
-                                        topology=(Periodic, Periodic, Periodic))
+        @testset "Derivatives" begin
+            @info "  Testing derivatives..."
+            grid = RectilinearGrid(arch, size=(3, 3, 3), extent=(3, 3, 3),
+                                          topology=(Periodic, Periodic, Periodic))
 
-            u, v, w = VelocityFields(arch, grid)
-            T, S = TracerFields(arch, grid, (:T, :S))
+            u, v, w = VelocityFields(grid)
+            T, S = TracerFields((:T, :S), grid)
             for a in (u, v, w, T)
                 @test x_derivative(a)
                 @test y_derivative(a)
                 @test z_derivative(a)
             end
-            @test x_derivative_cell(FT, arch)
-        end
-    end
 
-    @testset "Combined binary operations and derivatives" begin
-        @info "  Testing combined binary operations and derivatives..."
-        arch = CPU()
-        Nx = 3 # Δx=1, xC = 0.5, 1.5, 2.5
-        for FT in float_types
-            grid = RegularCartesianGrid(FT, size=(Nx, Nx, Nx), extent=(Nx, Nx, Nx))
-            a, b = (Field(Cell, Cell, Cell, arch, grid, nothing) for i in 1:2)
+            @test x_derivative_cell(arch)
+        end
+
+        @testset "Combined binary operations and derivatives" begin
+            @info "  Testing combined binary operations and derivatives..."
+            arch = CPU()
+            Nx = 3 # Δx=1, xC = 0.5, 1.5, 2.5
+            grid = RectilinearGrid(arch, size=(Nx, Nx, Nx), extent=(Nx, Nx, Nx))
+            a, b = (Field{Center, Center, Center}(grid) for i in 1:2)
 
             set!(b, 2)
             set!(a, (x, y, z) -> x < 2 ? 3x : 6)
@@ -332,7 +188,7 @@ end
             #                            0   0.5   1   1.5   2   2.5   3
             # x -▶                  ∘ ~~~|--- * ---|--- * ---|--- * ---|~~~ ∘
             #        i Face:    0        1         2        3          4
-            #        i Cell:        0         1         2         3         4
+            #        i Center:        0         1         2         3         4
 
             #              a = [    0,       1.5,      4.5,       6,        0    ]
             #              b = [    0,        2,        2,        2,        0    ]
@@ -340,73 +196,112 @@ end
 
             # x -▶                  ∘ ~~~|--- * ---|--- * ---|--- * ---|~~~ ∘
             #        i Face:    0        1         2         3         4
-            #        i Cell:        0         1         2         3         4
+            #        i Center:        0         1         2         3         4
 
             # ccc: b * ∂x(a) = [             4.5,      4.5      -4.5,            ]
-            # fcc: b * ∂x(a) = [         3,        6,        3,       -6         ]
+            # fcc: b * ∂x(a) = [        1.5,       6,        3,       -6         ]
 
+            C = Center
+            F = Face
 
             @test times_x_derivative(a, b, (C, C, C), 1, 2, 2, 4.5)
-            @test times_x_derivative(a, b, (F, C, C), 1, 2, 2, 3)
-
             @test times_x_derivative(a, b, (C, C, C), 2, 2, 2, 4.5)
-            @test times_x_derivative(a, b, (F, C, C), 2, 2, 2, 6)
-
             @test times_x_derivative(a, b, (C, C, C), 3, 2, 2, -4.5)
+
+            @test times_x_derivative(a, b, (F, C, C), 1, 2, 2, 1.5)
+            @test times_x_derivative(a, b, (F, C, C), 2, 2, 2, 6)
             @test times_x_derivative(a, b, (F, C, C), 3, 2, 2, 3)
+            @test times_x_derivative(a, b, (F, C, C), 4, 2, 2, -6)
         end
-    end
 
-    for arch in archs
-        @testset "Computations [$(typeof(arch))]" begin
-            @info "  Testing combined binary operations and derivatives..."
-            for FT in float_types
-                @info "    Testing computation of abstract operations [$FT, $(typeof(arch))]..."
+        grid = RectilinearGrid(arch, size=(4, 4, 4), extent=(1, 1, 1),
+                                      topology=(Periodic, Periodic, Bounded))
 
-                model = IncompressibleModel(
-                    architecture = arch,
-                      float_type = FT,
-                            grid = RegularCartesianGrid(FT, size=(16, 16, 16), extent=(1, 1, 1),
-                                                        topology=(Periodic, Periodic, Bounded))
-                )
+        buoyancy = SeawaterBuoyancy(gravitational_acceleration = 1,
+                                             equation_of_state = LinearEquationOfState(α=1, β=1))
 
-                @testset "Derivative computations [$FT, $(typeof(arch))]" begin
-                    @info "      Testing compute! derivatives..."
-                    @test compute_derivative(model, ∂x)
-                    @test compute_derivative(model, ∂y)
-                    @test compute_derivative(model, ∂z)
+        model = NonhydrostaticModel(grid = grid,
+                                buoyancy = buoyancy,
+                                 tracers = (:T, :S))
+
+        @testset "Construction of abstract operations [$(typeof(arch))]" begin
+            @info "    Testing construction of abstract operations [$(typeof(arch))]..."
+
+            u, v, w, T, S = fields(model)
+
+            for ϕ in (u, v, w, T)
+                for op in (sin, cos, sqrt, exp, tanh)
+                    @test op(ϕ) isa UnaryOperation
                 end
 
-                @testset "Unary computations [$FT, $(typeof(arch))]" begin
-                    @info "      Testing compute! unary operations..."
-                    for unary in Oceananigans.AbstractOperations.unary_operators
-                        @test compute_unary(eval(unary), model)
+                for ∂ in (∂x, ∂y, ∂z)
+                    @test ∂(ϕ) isa Derivative
+                end
+
+                for ψ in (u, v, w, T, S)
+                    @test ψ ^ ϕ isa BinaryOperation
+                    @test ψ * ϕ isa BinaryOperation
+                    @test ψ + ϕ isa BinaryOperation
+                    @test ψ - ϕ isa BinaryOperation
+                    @test ψ / ϕ isa BinaryOperation
+
+                    for χ in (u, v, w, T, S)
+                        @test ψ * ϕ * χ isa MultiaryOperation
+                        @test ψ + ϕ + χ isa MultiaryOperation
                     end
                 end
 
-                @testset "Binary computations [$FT, $(typeof(arch))]" begin
-                    @info "      Testing compute! binary operations..."
-                    @test compute_plus(model)
-                    @test compute_minus(model)
-                    @test compute_times(model)
+                for metric in (AbstractOperations.Δx,
+                               AbstractOperations.Δy,
+                               AbstractOperations.Δz,
+                               AbstractOperations.Ax,
+                               AbstractOperations.Ay,
+                               AbstractOperations.Az,
+                               AbstractOperations.volume)
+
+                    @test location(metric * ϕ) == location(ϕ)
                 end
+            end
 
-                @testset "Multiary computations [$FT, $(typeof(arch))]" begin
-                    @info "      Testing compute! multiary operations..."
-                    @test compute_many_plus(model)
+            @test u ^ 2 isa BinaryOperation
+            @test u * 2 isa BinaryOperation
+            @test u + 2 isa BinaryOperation
+            @test u - 2 isa BinaryOperation
+            @test u / 2 isa BinaryOperation
+        end
 
-                    @info "      Testing compute! kinetic energy..."
-                    @test compute_kinetic_energy(model)
-                end
+        @testset "BinaryOperations with GridMetricOperation [$(typeof(arch))]" begin
+            lat_lon_grid = LatitudeLongitudeGrid(arch, size=(1, 1, 1), longitude=(0, 1), latitude=(0, 1), z=(0, 1))
+            rectilinear_grid = RectilinearGrid(arch, size=(1, 1, 1), extent=(2, 3, 4))
 
-                @testset "Horizontal averages of operations [$FT, $(typeof(arch))]" begin
-                    @info "      Testing horizontal averges..."
-                    @test horizontal_average_of_plus(model)
-                    @test horizontal_average_of_minus(model)
-                    @test horizontal_average_of_times(model)
+            for LX in (Center, Face)
+                for LY in (Center, Face)
+                    for LZ in (Center, Face)
+                        loc = (LX, LY, LZ)
+                        f = Field(loc, rectilinear_grid)
+                        f .= 1
+            
+                        # Δx, Δy, Δz = 2, 3, 4
+                        # Ax, Ay, Az = 12, 8, 6
+                        # volume = 24
+                        op = f * AbstractOperations.Δx;     @test op[1, 1, 1] == 2
+                        op = f * AbstractOperations.Δy;     @test op[1, 1, 1] == 3
+                        op = f * AbstractOperations.Δz;     @test op[1, 1, 1] == 4
+                        op = f * AbstractOperations.Ax;     @test op[1, 1, 1] == 12
+                        op = f * AbstractOperations.Ay;     @test op[1, 1, 1] == 8
+                        op = f * AbstractOperations.Az;     @test op[1, 1, 1] == 6
+                        op = f * AbstractOperations.volume; @test op[1, 1, 1] == 24
 
-                    @test multiplication_and_derivative_ccf(model)
-                    @test multiplication_and_derivative_ccc(model)
+                        # Here we are really testing that `op` can be called
+                        f = Field(loc, lat_lon_grid)
+                        op = f * AbstractOperations.Δx;     @test op[1, 1, 1] == 0
+                        op = f * AbstractOperations.Δy;     @test op[1, 1, 1] == 0
+                        op = f * AbstractOperations.Δz;     @test op[1, 1, 1] == 0
+                        op = f * AbstractOperations.Ax;     @test op[1, 1, 1] == 0
+                        op = f * AbstractOperations.Ay;     @test op[1, 1, 1] == 0
+                        op = f * AbstractOperations.Az;     @test op[1, 1, 1] == 0
+                        op = f * AbstractOperations.volume; @test op[1, 1, 1] == 0
+                    end
                 end
             end
         end

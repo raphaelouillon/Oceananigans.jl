@@ -1,25 +1,31 @@
 module OutputWriters
 
 export
-    write_output,
-    JLD2OutputWriter, FieldOutput, FieldOutputs,
-    NetCDFOutputWriter, write_grid_and_attributes,
-    Checkpointer, restore_from_checkpoint
+    JLD2OutputWriter, NetCDFOutputWriter,
+    Checkpointer, restore_from_checkpoint,
+    WindowedTimeAverage,
+    TimeInterval, IterationInterval, WallTimeInterval, AveragedTimeInterval
 
 using CUDA
 
-using Oceananigans
+using Oceananigans.Architectures
 using Oceananigans.Grids
 using Oceananigans.Fields
-using Oceananigans.Architectures
+using Oceananigans.Models
 
-using Oceananigans: AbstractOutputWriter, @hascuda
-using Oceananigans.Fields: OffsetArray
+using Oceananigans: AbstractOutputWriter
+using Oceananigans.Fields: OffsetArray, FieldSlicer
+using Oceananigans.Utils: TimeInterval, IterationInterval, WallTimeInterval
+
+import Oceananigans: write_output!
 
 Base.open(ow::AbstractOutputWriter) = nothing
 Base.close(ow::AbstractOutputWriter) = nothing
 
 include("output_writer_utils.jl")
+include("fetch_output.jl")
+include("windowed_time_average.jl")
+include("time_average_outputs.jl")
 include("jld2_output_writer.jl")
 include("netcdf_output_writer.jl")
 include("checkpointer.jl")

@@ -1,34 +1,38 @@
-"""
-    UnaryOperation{X, Y, Z, O, A, I, G} <: AbstractOperation{X, Y, Z, G}
+const unary_operators = Set()
 
-An abstract representation of a unary operation on an `AbstractField`; or a function
-`f(x)` with on argument acting on `x::AbstractField`.
-"""
-struct UnaryOperation{X, Y, Z, O, A, I, G} <: AbstractOperation{X, Y, Z, G}
-      op :: O
-     arg :: A
-       ▶ :: I
+struct UnaryOperation{LX, LY, LZ, O, A, I, G, T} <: AbstractOperation{LX, LY, LZ, G, T}
+    op :: O
+    arg :: A
+    ▶ :: I
     grid :: G
 
-    """
-        UnaryOperation{X, Y, Z}(op, arg, ▶, grid)
+    @doc """
+        UnaryOperation{LX, LY, LZ}(op, arg, ▶, grid)
 
     Returns an abstract `UnaryOperation` representing the action of `op` on `arg`,
     and subsequent interpolation by `▶` on `grid`.
     """
-    function UnaryOperation{X, Y, Z}(op, arg, ▶, grid) where {X, Y, Z}
-        return new{X, Y, Z, typeof(op), typeof(arg), typeof(▶), typeof(grid)}(op, arg, ▶, grid)
+    function UnaryOperation{LX, LY, LZ}(op::O, arg::A, ▶::I, grid::G) where {LX, LY, LZ, O, A, I, G}
+        T = eltype(grid)
+        return new{LX, LY, LZ, O, A, I, G, T}(op, arg, ▶, grid)
     end
 end
+
+@inline Base.getindex(υ::UnaryOperation, i, j, k) = υ.▶(i, j, k, υ.grid, υ.op, υ.arg)
+
+#####
+##### UnaryOperation construction
+#####
 
 """Create a unary operation for `operator` acting on `arg` which interpolates the
 result from `Larg` to `L`."""
 function _unary_operation(L, operator, arg, Larg, grid)
     ▶ = interpolation_operator(Larg, L)
-    return UnaryOperation{L[1], L[2], L[3]}(operator, data(arg), ▶, grid)
+    return UnaryOperation{L[1], L[2], L[3]}(operator, arg, ▶, grid)
 end
 
-@inline Base.getindex(υ::UnaryOperation, i, j, k) = υ.▶(i, j, k, υ.grid, υ.op, υ.arg)
+# Recompute location of unary operation
+@inline at(loc, υ::UnaryOperation) = υ.op(loc, at(loc, υ.arg))
 
 """
     @unary op1 op2 op3...
@@ -43,30 +47,32 @@ Also note: a unary function in `Base` must be imported to be extended: use `impo
 Example
 =======
 
+```jldoctest
+julia> using Oceananigans, Oceananigans.Grids, Oceananigans.AbstractOperations
+
 julia> square_it(x) = x^2
 square_it (generic function with 1 method)
 
 julia> @unary square_it
-7-element Array{Any,1}:
- :sqrt
- :sin
- :cos
- :exp
- :tanh
- :-
- :square_it
+Set{Any} with 8 elements:
+  :sqrt
+  :square_it
+  :cos
+  :exp
+  :interpolate_identity
+  :-
+  :tanh
+  :sin
 
-julia> c = Field(Cell, Cell, Cell, CPU(), RegularCartesianGrid((1, 1, 16), (1, 1, 1)));
+julia> c = CenterField(RectilinearGrid(size=(1, 1, 1), extent=(1, 1, 1)));
 
 julia> square_it(c)
-UnaryOperation at (Cell, Cell, Cell)
-├── grid: RegularCartesianGrid{Float64,StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}}}
-│   ├── size: (1, 1, 16)
-│   └── domain: x ∈ [0.0, 1.0], y ∈ [0.0, 1.0], z ∈ [0.0, -1.0]
+UnaryOperation at (Center, Center, Center)
+├── grid: 1×1×1 RectilinearGrid{Float64, Periodic, Periodic, Bounded} on CPU with 1×1×1 halo
 └── tree:
-
-square_it at (Cell, Cell, Cell) via identity
-└── OffsetArrays.OffsetArray{Float64,3,Array{Float64,3}}
+    square_it at (Center, Center, Center) via identity
+    └── 1×1×1 Field{Center, Center, Center} on RectilinearGrid on CPU
+```
 """
 macro unary(ops...)
     expr = Expr(:block)
@@ -104,9 +110,20 @@ macro unary(ops...)
     return expr
 end
 
-const unary_operators = Set()
+#####
+##### Nested computations
+#####
+
+compute_at!(υ::UnaryOperation, time) = compute_at!(υ.arg, time)
+
+#####
+##### GPU capabilities
+#####
 
 "Adapt `UnaryOperation` to work on the GPU via CUDAnative and CUDAdrv."
-Adapt.adapt_structure(to, unary::UnaryOperation{X, Y, Z}) where {X, Y, Z} =
-    UnaryOperation{X, Y, Z}(Adapt.adapt(to, unary.op), Adapt.adapt(to, unary.arg),
-                            Adapt.adapt(to, unary.▶), unary.grid)
+Adapt.adapt_structure(to, unary::UnaryOperation{LX, LY, LZ}) where {LX, LY, LZ} =
+    UnaryOperation{LX, LY, LZ}(Adapt.adapt(to, unary.op),
+                               Adapt.adapt(to, unary.arg),
+                               Adapt.adapt(to, unary.▶),
+                               Adapt.adapt(to, unary.grid))
+

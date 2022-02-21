@@ -1,3 +1,5 @@
+using Oceananigans.Grids: Flat
+
 #####
 ##### Base difference operators
 #####
@@ -25,27 +27,23 @@
 @inline δzᵃᵃᶠ(i, j, k, grid, f::F, args...) where F<:Function = f(i, j, k,   grid, args...) - f(i, j, k-1, grid, args...)
 
 #####
-##### Operators that calculate A*q where A is an area and q is some quantity.
-##### Useful for defining flux difference operators and other flux operators.
+##### Support for Flat Earths
 #####
 
-@inline Ax_ψᵃᵃᶠ(i, j, k, grid, u) = @inbounds Axᵃᵃᶠ(i, j, k, grid) * u[i, j, k]
-@inline Ax_ψᵃᵃᶜ(i, j, k, grid, c) = @inbounds Axᵃᵃᶜ(i, j, k, grid) * c[i, j, k]
-@inline Ay_ψᵃᵃᶠ(i, j, k, grid, v) = @inbounds Ayᵃᵃᶠ(i, j, k, grid) * v[i, j, k]
-@inline Ay_ψᵃᵃᶜ(i, j, k, grid, c) = @inbounds Ayᵃᵃᶜ(i, j, k, grid) * c[i, j, k]
-@inline Az_ψᵃᵃᵃ(i, j, k, grid, c) = @inbounds Azᵃᵃᵃ(i, j, k, grid) * c[i, j, k]
+@inline δxᶜᵃᵃ(i, j, k, grid::AG{FT, Flat, TY, TZ}, u) where {FT, TY, TZ} = zero(FT)
+@inline δxᶠᵃᵃ(i, j, k, grid::AG{FT, Flat, TY, TZ}, c) where {FT, TY, TZ} = zero(FT)
 
-#####
-##### "Flux difference" operators of the form δ(A*f) where A is an area and f is an array.
-#####
+@inline δyᵃᶜᵃ(i, j, k, grid::AG{FT, TX, Flat, TZ}, v) where {FT, TX, TZ} = zero(FT)
+@inline δyᵃᶠᵃ(i, j, k, grid::AG{FT, TX, Flat, TZ}, c) where {FT, TX, TZ} = zero(FT)
 
-@inline δᴶxᶜᵃᶜ(i, j, k, grid, c) = δxᶜᵃᵃ(i, j, k, grid, Ax_ψᵃᵃᶜ, c)
-@inline δᴶxᶜᵃᶠ(i, j, k, grid, c) = δxᶜᵃᵃ(i, j, k, grid, Ax_ψᵃᵃᶠ, c)
-@inline δᴶxᶠᵃᶜ(i, j, k, grid, c) = δxᶠᵃᵃ(i, j, k, grid, Ax_ψᵃᵃᶜ, c)
-@inline δᴶxᶠᵃᶠ(i, j, k, grid, c) = δxᶠᵃᵃ(i, j, k, grid, Ax_ψᵃᵃᶠ, c)
-@inline δᴶyᵃᶜᶜ(i, j, k, grid, c) = δyᵃᶜᵃ(i, j, k, grid, Ay_ψᵃᵃᶜ, c)
-@inline δᴶyᵃᶜᶠ(i, j, k, grid, c) = δyᵃᶜᵃ(i, j, k, grid, Ay_ψᵃᵃᶠ, c)
-@inline δᴶyᵃᶠᶜ(i, j, k, grid, c) = δyᵃᶠᵃ(i, j, k, grid, Ay_ψᵃᵃᶜ, c)
-@inline δᴶyᵃᶠᶠ(i, j, k, grid, c) = δyᵃᶠᵃ(i, j, k, grid, Ay_ψᵃᵃᶠ, c)
-@inline δᴶzᵃᵃᶜ(i, j, k, grid, c) = δzᵃᵃᶜ(i, j, k, grid, Az_ψᵃᵃᵃ, c)
-@inline δᴶzᵃᵃᶠ(i, j, k, grid, c) = δzᵃᵃᶠ(i, j, k, grid, Az_ψᵃᵃᵃ, c)
+@inline δzᵃᵃᶜ(i, j, k, grid::AG{FT, TX, TY, Flat}, w) where {FT, TX, TY} = zero(FT)
+@inline δzᵃᵃᶠ(i, j, k, grid::AG{FT, TX, TY, Flat}, c) where {FT, TX, TY} = zero(FT)
+
+@inline δxᶜᵃᵃ(i, j, k, grid::AG{FT, Flat, TY, TZ}, f::F, args...) where {FT, TY, TZ, F<:Function} = zero(FT)
+@inline δxᶠᵃᵃ(i, j, k, grid::AG{FT, Flat, TY, TZ}, f::F, args...) where {FT, TY, TZ, F<:Function} = zero(FT)
+
+@inline δyᵃᶜᵃ(i, j, k, grid::AG{FT, TX, Flat, TZ}, f::F, args...) where {FT, TX, TZ, F<:Function} = zero(FT)
+@inline δyᵃᶠᵃ(i, j, k, grid::AG{FT, TX, Flat, TZ}, f::F, args...) where {FT, TX, TZ, F<:Function} = zero(FT)
+
+@inline δzᵃᵃᶜ(i, j, k, grid::AG{FT, TX, TY, Flat}, f::F, args...) where {FT, TX, TY, F<:Function} = zero(FT)
+@inline δzᵃᵃᶠ(i, j, k, grid::AG{FT, TX, TY, Flat}, f::F, args...) where {FT, TX, TY, F<:Function} = zero(FT)

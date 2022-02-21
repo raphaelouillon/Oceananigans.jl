@@ -1,67 +1,70 @@
 module AbstractOperations
 
-export ∂x, ∂y, ∂z, @at, Computation, compute!, @unary, @binary, @multiary
+export ∂x, ∂y, ∂z, @at, @unary, @binary, @multiary
+export Δx, Δy, Δz, Ax, Ay, Az, volume
+export Average, Integral, KernelFunctionOperation
+export UnaryOperation, Derivative, BinaryOperation, MultiaryOperation, ConditionalOperation
 
-import Base: identity
 using Base: @propagate_inbounds
 
 import Adapt
 using CUDA
-using GPUifyLoops: @launch, @loop
-
-using Oceananigans.Architectures: @hascuda
 
 using Oceananigans
-using Oceananigans.Grids
 using Oceananigans.Architectures
-using Oceananigans.Fields
+using Oceananigans.Grids
 using Oceananigans.Operators
 using Oceananigans.BoundaryConditions
+using Oceananigans.Fields
 
+using Oceananigans.Operators: interpolation_operator
 using Oceananigans.Architectures: device
-using Oceananigans.Models: AbstractModel
-using Oceananigans.Diagnostics: HorizontalAverage, normalize_horizontal_sum!
-using Oceananigans.Utils: launch_config
+using Oceananigans: AbstractModel
 
 import Oceananigans.Architectures: architecture
-import Oceananigans.Fields: data
-import Oceananigans.Diagnostics: run_diagnostic
+import Oceananigans.BoundaryConditions: fill_halo_regions!
+import Oceananigans.Fields: data, compute_at!
 
 #####
 ##### Basic functionality
 #####
 
-"""
-    AbstractOperation{X, Y, Z, G} <: AbstractField{X, Y, Z, Nothing, G}
+abstract type AbstractOperation{LX, LY, LZ, G, T} <: AbstractField{LX, LY, LZ, G, T, 3} end
 
-Represents an operation performed on grid of type `G` at locations `X`, `Y`, and `Z`.
-"""
-abstract type AbstractOperation{X, Y, Z, G} <: AbstractField{X, Y, Z, Nothing, G} end
+const AF = AbstractField # used in unary_operations.jl, binary_operations.jl, etc
 
-const AF = AbstractField
+# We have no halos to fill
+fill_halo_regions!(::AbstractOperation, args...; kwargs...) = nothing
 
-# We (informally) require that all field-like objects define `data` and `parent`:
-data(op::AbstractOperation) = op
-Base.parent(op::AbstractOperation) = op
+architecture(a::AbstractOperation) = architecture(a.grid)
 
 # AbstractOperation macros add their associated functions to this list
 const operators = Set()
 
-include("function_fields.jl")
-include("interpolation_utils.jl")
-include("grid_validation.jl")
+"""
+    at(loc, abstract_operation)
 
+Return `abstract_operation` relocated to `loc`ation.
+"""
+at(loc, f) = f # fallback
+
+include("grid_validation.jl")
+include("grid_metrics.jl")
+include("metric_field_reductions.jl")
 include("unary_operations.jl")
 include("binary_operations.jl")
 include("multiary_operations.jl")
 include("derivatives.jl")
-
-include("computations.jl")
+include("kernel_function_operation.jl")
+include("conditional_operations.jl")
+include("computed_field.jl")
+include("at.jl")
+include("broadcasting_abstract_operations.jl")
 include("show_abstract_operations.jl")
 
 # Make some operators!
 
-# Some unaries:
+# Some operators:
 import Base: sqrt, sin, cos, exp, tanh, -, +, /, ^, *
 
 @unary sqrt sin cos exp tanh
@@ -87,3 +90,4 @@ push!(operators, :*)
 push!(multiary_operators, :*)
 
 end # module
+

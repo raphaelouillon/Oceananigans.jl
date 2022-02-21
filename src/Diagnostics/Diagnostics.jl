@@ -1,20 +1,18 @@
 module Diagnostics
 
-export
-    HorizontalAverage, TimeSeries, FieldMaximum,
-    CFL, AdvectiveCFL, DiffusiveCFL, NaNChecker,
-    run_diagnostic
+export StateChecker, CFL, AdvectiveCFL, DiffusiveCFL
 
-using Oceananigans,
-      Oceananigans.Operators
+using CUDA
+using Oceananigans
+using Oceananigans.Operators
 
 using Oceananigans: AbstractDiagnostic
+using Oceananigans.Utils: TimeInterval, IterationInterval, WallTimeInterval
 
-include("diagnostics_kernels.jl")
-include("nan_checker.jl")
-include("horizontal_average.jl")
-include("time_series.jl")
-include("field_maximum.jl")
+import Base: show
+import Oceananigans: run_diagnostic!
+
+include("state_checker.jl")
 include("cfl.jl")
 
 end

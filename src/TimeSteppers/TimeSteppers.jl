@@ -1,31 +1,19 @@
 module TimeSteppers
 
 export
-    AdamsBashforthTimeStepper,
+    QuasiAdamsBashforth2TimeStepper,
+    RungeKutta3TimeStepper,
     time_step!,
-    compute_w_from_continuity!,
+    Clock,
     tendencies
 
 using CUDA
-using GPUifyLoops: @launch, @loop, @unroll
-
-import Oceananigans: TimeStepper
-
-using Oceananigans.Architectures: @hascuda, device
-using Oceananigans.Architectures
-using Oceananigans.Grids
-using Oceananigans.Fields
-using Oceananigans.Operators
-using Oceananigans.Coriolis
-using Oceananigans.Buoyancy
-using Oceananigans.SurfaceWaves
-using Oceananigans.BoundaryConditions
-using Oceananigans.Solvers
-using Oceananigans.Models
-using Oceananigans.Utils
-
-using Oceananigans.TurbulenceClosures:
-    calculate_diffusivities!, ∂ⱼ_2ν_Σ₁ⱼ, ∂ⱼ_2ν_Σ₂ⱼ, ∂ⱼ_2ν_Σ₃ⱼ, ∇_κ_∇c
+using KernelAbstractions
+using Oceananigans: AbstractModel, prognostic_fields
+using Oceananigans.Architectures: device
+using Oceananigans.Fields: TendencyFields
+using Oceananigans.LagrangianParticleTracking: update_particle_properties!
+using Oceananigans.Utils: work_layout
 
 """
     AbstractTimeStepper
@@ -42,19 +30,28 @@ Returns a timestepper with name `name`, instantiated with `args...`.
 Example
 =======
 
-julia> stepper = TimeStepper(:AdamsBashforth, Float64, CPU(), grid, tracernames)
+julia> stepper = TimeStepper(:QuasiAdamsBashforth2, CPU(), grid, tracernames)
 """
-function TimeStepper(name::Symbol, args...)
+function TimeStepper(name::Symbol, args...; kwargs...)
     fullname = Symbol(name, :TimeStepper)
-    return eval(Expr(:call, fullname, args...))
+    return @eval $fullname($args...; $kwargs...)
 end
 
-# Fallbacks
-TimeStepper(stepper::AbstractTimeStepper, args...) = stepper
+# Fallback
+TimeStepper(stepper::AbstractTimeStepper, args...; kwargs...) = stepper
 
-include("generic_time_stepping.jl")
-include("velocity_and_tracer_tendencies.jl")
-include("time_stepping_kernels.jl")
-include("adams_bashforth.jl")
+function update_state! end
+function calculate_tendencies! end
+
+calculate_pressure_correction!(model, Δt) = nothing
+pressure_correct_velocities!(model, Δt) = nothing
+
+reset!(timestepper) = nothing
+
+include("clock.jl")
+include("store_tendencies.jl")
+include("quasi_adams_bashforth_2.jl")
+include("runge_kutta_3.jl")
+include("correct_immersed_tendencies.jl")
 
 end # module

@@ -1,28 +1,38 @@
 module Grids
 
-export
-    Cell, Face,
-    AbstractTopology, Periodic, Bounded, Flat, topology,
-    AbstractGrid, RegularCartesianGrid, VerticallyStretchedCartesianGrid,
-    xnode, ynode, znode, xnodes, ynodes, znodes, nodes,
-    xC, xF, yC, yF, zC, zF
+export Center, Face
+export AbstractTopology, Periodic, Bounded, Flat, Connected, topology
+
+export AbstractGrid, AbstractUnderlyingGrid, halo_size, total_size
+export AbstractRectilinearGrid, RectilinearGrid 
+export XRegRectilinearGrid, YRegRectilinearGrid, ZRegRectilinearGrid, HRegRectilinearGrid, RegRectilinearGrid
+export AbstractCurvilinearGrid, AbstractHorizontallyCurvilinearGrid
+export LatitudeLongitudeGrid, XRegLatLonGrid, YRegLatLonGrid, ZRegLatLonGrid
+export ConformalCubedSphereFaceGrid, ConformalCubedSphereGrid
+export node, xnode, ynode, znode, xnodes, ynodes, znodes, nodes
+export offset_data, new_data
+export on_architecture
+
+using CUDA
+using Adapt
+using OffsetArrays
+
+using Oceananigans
+using Oceananigans.Architectures
 
 import Base: size, length, eltype, show
-
-using Oceananigans, Oceananigans.Architectures
-
-using OffsetArrays
+import Oceananigans.Architectures: architecture
 
 #####
 ##### Abstract types
 #####
 
 """
-    Cell
+    Center
 
 A type describing the location at the center of a grid cell.
 """
-struct Cell end
+struct Center end
 
 """
 	Face
@@ -48,8 +58,7 @@ struct Periodic <: AbstractTopology end
 """
     Bounded
 
-Grid topology for bounded dimensions. These could be wall-bounded dimensions
-or dimensions
+Grid topology for bounded dimensions, e.g., wall-bounded dimensions.
 """
 struct Bounded <: AbstractTopology end
 
@@ -62,28 +71,56 @@ is uniform and does not vary.
 struct Flat <: AbstractTopology end
 
 """
+    Connected
+
+Grid topology for dimensions that are connected to other models or domains on both sides.
+"""
+const Connected = Periodic  # Right now we just need them to behave like Periodic dimensions except we change the boundary conditions.
+
+"""
     AbstractGrid{FT, TX, TY, TZ}
 
 Abstract supertype for grids with elements of type `FT` and topology `{TX, TY, TZ}`.
 """
-abstract type AbstractGrid{FT, TX, TY, TZ} end
+abstract type AbstractGrid{FT, TX, TY, TZ, Arch} end
 
-eltype(::AbstractGrid{FT}) where FT = FT
-topology(::AbstractGrid{FT, TX, TY, TZ}) where {FT, TX, TY, TZ} = (TX, TY, TZ)
-topology(grid, dim) = topology(grid)[dim]
+"""
+    AbstractUnderlyingGrid{FT, TX, TY, TZ}
 
-size(grid::AbstractGrid) = (grid.Nx, grid.Ny, grid.Nz)
-length(grid::AbstractGrid) = (grid.Lx, grid.Ly, grid.Lz)
-halo_size(grid) = (grid.Hx, grid.Hy, grid.Hz)
+Abstract supertype for "primary" grids (as opposed to grids with immersed boundaries)
+with elements of type `FT` and topology `{TX, TY, TZ}`.
+"""
+abstract type AbstractUnderlyingGrid{FT, TX, TY, TZ, Arch} <: AbstractGrid{FT, TX, TY, TZ, Arch} end
 
-total_size(a) = size(a) # fallback
+"""
+    AbstractRectilinearGrid{FT, TX, TY, TZ}
 
-total_size(grid::AbstractGrid) = (grid.Nx + grid.Hx, 
-                                  grid.Ny + grid.Hy, 
-                                  grid.Nz + grid.Hz)
+Abstract supertype for rectilinear grids with elements of type `FT` and topology `{TX, TY, TZ}`.
+"""
+abstract type AbstractRectilinearGrid{FT, TX, TY, TZ, Arch} <: AbstractUnderlyingGrid{FT, TX, TY, TZ, Arch} end
+
+"""
+    AbstractCurvilinearGrid{FT, TX, TY, TZ}
+
+Abstract supertype for curvilinear grids with elements of type `FT` and topology `{TX, TY, TZ}`.
+"""
+abstract type AbstractCurvilinearGrid{FT, TX, TY, TZ, Arch} <: AbstractUnderlyingGrid{FT, TX, TY, TZ, Arch} end
+
+"""
+    AbstractHorizontallyCurvilinearGrid{FT, TX, TY, TZ}
+
+Abstract supertype for horizontally-curvilinear grids with elements of type `FT` and topology `{TX, TY, TZ}`.
+"""
+abstract type AbstractHorizontallyCurvilinearGrid{FT, TX, TY, TZ, Arch} <: AbstractCurvilinearGrid{FT, TX, TY, TZ, Arch} end
 
 include("grid_utils.jl")
-include("regular_cartesian_grid.jl")
-include("vertically_stretched_cartesian_grid.jl")
+include("zeros.jl")
+include("new_data.jl")
+include("automatic_halo_sizing.jl")
+include("input_validation.jl")
+include("grid_generation.jl")
+include("rectilinear_grid.jl")
+include("conformal_cubed_sphere_face_grid.jl")
+include("latitude_longitude_grid.jl")
 
 end

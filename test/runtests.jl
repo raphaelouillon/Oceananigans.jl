@@ -1,143 +1,143 @@
-using Test
-using Printf
-using Random
-using Statistics
-using LinearAlgebra
-using Logging
+include("dependencies_for_runtests.jl")
 
-using CUDA
-using JLD2
-using FFTW
-using OffsetArrays
-
-using Oceananigans
-using Oceananigans.Architectures
-using Oceananigans.Grids
-using Oceananigans.Operators
-using Oceananigans.BoundaryConditions
-using Oceananigans.Fields
-using Oceananigans.Coriolis
-using Oceananigans.Buoyancy
-using Oceananigans.Forcing
-using Oceananigans.Solvers
-using Oceananigans.Models
-using Oceananigans.Simulations
-using Oceananigans.Diagnostics
-using Oceananigans.OutputWriters
-using Oceananigans.TurbulenceClosures
-using Oceananigans.AbstractOperations
-using Oceananigans.Logger
-using Oceananigans.Utils
-using Oceananigans.Architectures: device # to resolve conflict with CUDA.device
-
-using Dates: DateTime, Nanosecond
-using TimesDates: TimeDate
-using Statistics: mean
-using LinearAlgebra: norm
-using GPUifyLoops: @launch, @loop
-using NCDatasets: Dataset
-
-using SeawaterPolynomials
-
-import Oceananigans.Fields: interior
-import Oceananigans.Utils: datatuple
-
-using Oceananigans.Diagnostics: run_diagnostic, velocity_div!
-using Oceananigans.TimeSteppers: _compute_w_from_continuity!
-using Oceananigans.AbstractOperations: Computation, compute!
-
-#####
-##### On CI servers select the GPU with the most available memory or with the
-##### highest capability if testing needs to be thorough).
-##### Source credit: https://github.com/JuliaGPU/CuArrays.jl/pull/526
-#####
-
-@hascuda begin
-    gpu_candidates = [(dev=dev, cap=CUDA.capability(dev),
-                       mem=CUDA.CuContext(ctx -> CUDA.available_memory(), dev))
-                       for dev in CUDA.devices()]
-
-    thorough = parse(Bool, get(ENV, "CI_THOROUGH", "false"))
-    if thorough
-        sort!(gpu_candidates, by=x->(x.cap, x.mem))
-    else
-        sort!(gpu_candidates, by=x->x.mem)
+@testset "Oceananigans" begin
+    if test_file != :none
+        @testset "Single file test" begin
+            include(String(test_file))
+        end
     end
 
-    pick = last(gpu_candidates)
-    device!(pick.dev)
-end
-
-#####
-##### Useful utilities
-#####
-
-function get_model_field(field_name, model)
-    if field_name ∈ (:u, :v, :w)
-        return getfield(model.velocities, field_name)
-    else
-        return getfield(model.tracers, field_name)
+    # Core Oceananigans 
+    if group == :unit || group == :all
+        @testset "Unit tests" begin
+            include("test_grids.jl")
+            include("test_operators.jl")
+            include("test_boundary_conditions.jl")
+            include("test_field.jl")
+            include("test_field_reductions.jl")
+            include("test_halo_regions.jl")
+            include("test_coriolis.jl")
+            include("test_buoyancy.jl")
+            include("test_stokes_drift.jl")
+            include("test_utils.jl")
+            include("test_schedules.jl")
+        end
     end
-end
 
-datatuple(A) = NamedTuple{propertynames(A)}(Array(data(a)) for a in A)
+    if group == :abstract_operations || group == :all
+        @testset "AbstractOperations and broadcasting tests" begin
+            include("test_abstract_operations.jl")
+            include("test_conditional_reductions.jl")
+            include("test_computed_field.jl")
+            include("test_broadcasting.jl")
+        end
+    end
 
-function get_output_tuple(output, iter, tuplename)
-    file = jldopen(output.filepath, "r")
-    output_tuple = file["timeseries/$tuplename/$iter"]
-    close(file)
-    return output_tuple
-end
+    if group == :poisson_solvers_1 || group == :all
+        @testset "Poisson Solvers 1" begin
+            include("test_poisson_solvers.jl")
+        end
+    end
 
-#####
-##### Testing parameters
-#####
+    if group == :poisson_solvers_2 || group == :all
+        @testset "Poisson Solvers 2" begin
+            include("test_poisson_solvers_vertically_stretched_grid.jl")
+        end
+    end
 
-float_types = (Float32, Float64)
+    if group == :matrix_poisson_solvers || group == :all
+        @testset "Matrix Poisson Solvers" begin
+            include("test_matrix_poisson_solver.jl")
+        end
+    end
 
-         archs = (CPU(),)
-@hascuda archs = (GPU(),)
+    if group == :general_solvers || group == :all
+        @testset "General Solvers" begin
+            include("test_batched_tridiagonal_solver.jl")
+            include("test_preconditioned_conjugate_gradient_solver.jl")
+        end
+    end
 
-closures = (
-    :ConstantIsotropicDiffusivity,
-    :ConstantAnisotropicDiffusivity,
-    :AnisotropicBiharmonicDiffusivity,
-    :TwoDimensionalLeith,
-    :SmagorinskyLilly,
-    :BlasiusSmagorinsky,
-    :RozemaAnisotropicMinimumDissipation,
-    :VerstappenAnisotropicMinimumDissipation
-)
+    # Simulations
+    if group == :simulation || group == :all
+        @testset "Simulation tests" begin
+            include("test_simulations.jl")
+            include("test_diagnostics.jl")
+            include("test_output_writers.jl")
+            include("test_output_readers.jl")
+            include("test_lagrangian_particle_tracking.jl")
+        end
+    end
 
-#####
-##### Run tests!
-#####
+    # Models
+    if group == :time_stepping_1 || group == :all
+        @testset "Model and time stepping tests (part 1)" begin
+            include("test_nonhydrostatic_models.jl")
+            include("test_time_stepping.jl")
+        end
+    end
 
-with_logger(ModelLogger()) do
-    @testset "Oceananigans" begin
-        include("test_grids.jl")
-        include("test_operators.jl")
-        include("test_boundary_conditions.jl")
-        include("test_fields.jl")
-        include("test_halo_regions.jl")
-        include("test_solvers.jl")
-        include("test_pressure_solvers.jl")
-        include("test_coriolis.jl")
-        include("test_buoyancy.jl")
-        include("test_surface_waves.jl")
-        include("test_models.jl")
-        include("test_simulations.jl")
-        include("test_time_stepping.jl")
-        include("test_time_stepping_bcs.jl")
-        include("test_forcings.jl")
-        include("test_turbulence_closures.jl")
-        include("test_dynamics.jl")
-        include("test_diagnostics.jl")
-        include("test_output_writers.jl")
-        include("test_abstract_operations.jl")
-        include("test_regression.jl")
-        include("test_examples.jl")
-        include("test_verification.jl")
-        include("test_benchmarks.jl")
+    if group == :time_stepping_2 || group == :all
+        @testset "Model and time stepping tests (part 2)" begin
+            include("test_boundary_conditions_integration.jl")
+            include("test_forcings.jl")
+            include("test_dynamics.jl")
+        end
+    end
+
+    if group == :turbulence_closures || group == :all
+        @testset "Turbulence closures tests" begin
+            include("test_turbulence_closures.jl")
+        end
+    end
+
+    if group == :shallow_water || group == :all
+        include("test_shallow_water_models.jl")
+    end
+
+    if group == :hydrostatic_free_surface || group == :all
+        @testset "HydrostaticFreeSurfaceModel tests" begin
+            include("test_hydrostatic_free_surface_models.jl")
+            include("test_ensemble_hydrostatic_free_surface_models.jl")
+            include("test_hydrostatic_free_surface_immersed_boundaries.jl")
+            include("test_vertical_vorticity_field.jl")
+            include("test_implicit_free_surface_solver.jl")
+            include("test_split_explicit_free_surface_solver.jl")
+            include("test_split_explicit_vertical_integrals.jl")
+            include("test_hydrostatic_free_surface_immersed_boundaries_implicit_solve.jl")
+        end
+    end
+    
+    # Model enhancements: cubed sphere, distributed, etc
+    if group == :cubed_sphere || group == :all
+        @testset "Cubed sphere tests" begin
+            include("test_cubed_spheres.jl")
+            include("test_cubed_sphere_halo_exchange.jl")
+            include("test_cubed_sphere_circulation.jl")
+        end
+    end
+
+    if group == :distributed || group == :all
+        MPI.Initialized() || MPI.Init()
+        include("test_distributed_models.jl")
+        include("test_distributed_poisson_solvers.jl")
+    end
+
+    if group == :nonhydrostatic_regression || group == :all
+        include("test_nonhydrostatic_regression.jl")
+    end
+
+    if group == :hydrostatic_regression || group == :all
+        include("test_hydrostatic_regression.jl")
+    end
+
+    if group == :scripts || group == :all
+        @testset "Scripts" begin
+            include("test_validation.jl")
+        end
+    end
+
+    if group == :convergence
+        include("test_convergence.jl")
     end
 end

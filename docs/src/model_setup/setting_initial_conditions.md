@@ -1,16 +1,34 @@
 # Setting initial conditions
+
 Initial conditions are imposed after model construction. This can be easily done using the the `set!` function, which
 allows the setting of initial conditions using constant values, arrays, or functions.
 
-```@example
-set!(model, u=0.1, v=1.5)
+```@meta
+DocTestSetup = quote
+    using Oceananigans
+end
 ```
 
-```@example
-∂T∂z = 0.01
-ϵ(σ) = σ * randn()
-T₀(x, y, z) = ∂T∂z * z + ϵ(1e-8)
-set!(model, T=T₀)
+```jldoctest
+julia> grid = RectilinearGrid(size=(16, 16, 16), extent=(1, 1, 1));
+
+julia> model = NonhydrostaticModel(grid=grid);
+
+julia> set!(model, u=0.1, v=1.5)
+```
+
+```jldoctest
+julia> grid = RectilinearGrid(size=(16, 16, 16), extent=(1, 1, 1));
+
+julia> model = NonhydrostaticModel(grid=grid, buoyancy=SeawaterBuoyancy(), tracers=(:T, :S));
+
+julia> ∂T∂z = 0.01;
+
+julia> ϵ(σ) = σ * randn();
+
+julia> T₀(x, y, z) = ∂T∂z * z + ϵ(1e-8);
+
+julia> set!(model, T=T₀)
 ```
 
 !!! tip "Divergence-free velocity fields"

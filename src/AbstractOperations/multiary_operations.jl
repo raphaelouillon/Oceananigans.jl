@@ -1,48 +1,56 @@
-struct MultiaryOperation{X, Y, Z, N, O, A, I, G} <: AbstractOperation{X, Y, Z, G}
-      op :: O
+const multiary_operators = Set()
+
+struct MultiaryOperation{LX, LY, LZ, N, O, A, I, G, T} <: AbstractOperation{LX, LY, LZ, G, T}
+    op :: O
     args :: A
-       ▶ :: I
+    ▶ :: I
     grid :: G
 
-    function MultiaryOperation{X, Y, Z}(op, args, ▶, grid) where {X, Y, Z}
-        return new{X, Y, Z, length(args), typeof(op), typeof(args), typeof(▶), typeof(grid)}(op, args, ▶, grid)
+    function MultiaryOperation{LX, LY, LZ}(op::O, args::A, ▶::I, grid::G) where {LX, LY, LZ, O, A, I, G}
+        T = eltype(grid)
+        N = length(args)
+        return new{LX, LY, LZ, N, O, A, I, G, T}(op, args, ▶, grid)
     end
 end
 
-function _multiary_operation(L, op, args, Largs, grid) where {X, Y, Z}
-    ▶ = Tuple(interpolation_operator(La, L) for La in Largs)
-    return MultiaryOperation{L[1], L[2], L[3]}(op, Tuple(data(a) for a in args), ▶, grid)
-end
-
-@inline Base.getindex(Π::MultiaryOperation{X, Y, Z, N}, i, j, k)  where {X, Y, Z, N} =
+@inline Base.getindex(Π::MultiaryOperation{LX, LY, LZ, N}, i, j, k)  where {LX, LY, LZ, N} =
     Π.op(ntuple(γ -> Π.▶[γ](i, j, k, Π.grid, Π.args[γ]), Val(N))...)
 
-"""Return `a`, or convert `a` to `FunctionField` if `a::Function`"""
-fieldify(L, a, grid) = a
-fieldify(L, a::Function, grid) = FunctionField(L, a, grid)
+#####
+##### MultiaryOperation construction
+#####
+
+function _multiary_operation(L, op, args, Largs, grid) where {LX, LY, LZ}
+    ▶ = Tuple(interpolation_operator(La, L) for La in Largs)
+    return MultiaryOperation{L[1], L[2], L[3]}(op, Tuple(a for a in args), ▶, grid)
+end
+
+# Recompute location of multiary operation
+@inline at(loc, Π::MultiaryOperation) = Π.op(loc, Tuple(at(loc, a) for a in Π.args)...)
 
 """Return an expression that defines an abstract `MultiaryOperator` named `op` for `AbstractField`."""
 function define_multiary_operator(op)
     return quote
-        import Oceananigans.Fields: AbstractField
+        function $op(Lop::Tuple,
+                     a::Union{Function, Number, Oceananigans.Fields.AbstractField},
+                     b::Union{Function, Number, Oceananigans.Fields.AbstractField},
+                     c::Union{Function, Number, Oceananigans.Fields.AbstractField},
+                     d::Union{Function, Number, Oceananigans.Fields.AbstractField}...)
 
-        local location = Oceananigans.Fields.location
-
-        # "Function, or Field"
-        local FuFi = Union{Function, AbstractField}
-
-        function $op(Lop::Tuple, a::FuFi, b::FuFi, c::FuFi...)
-            args = tuple(a, b, c...)
+            args = tuple(a, b, c, d...)
             grid = Oceananigans.AbstractOperations.validate_grid(args...)
 
             # Convert any functions to FunctionFields
-            args = Tuple(Oceananigans.AbstractOperations.fieldify(Lop, a, grid) for a in args)
-            Largs = Tuple(location(a) for a in args)
+            args = Tuple(Oceananigans.Fields.fieldify_function(Lop, a, grid) for a in args)
+            Largs = Tuple(Oceananigans.Fields.location(a) for a in args)
 
             return Oceananigans.AbstractOperations._multiary_operation(Lop, $op, args, Largs, grid)
         end
 
-        $op(a::FuFi, b::FuFi, c::FuFi...) = $op(location(a), a, b, c...)
+        $op(a::Oceananigans.Fields.AbstractField,
+            b::Union{Function, Oceananigans.Fields.AbstractField},
+            c::Union{Function, Oceananigans.Fields.AbstractField},
+            d::Union{Function, Oceananigans.Fields.AbstractField}...) = $op(Oceananigans.Fields.location(a), a, b, c, d...)
     end
 end
 
@@ -53,57 +61,53 @@ Turn each multiary operator in the list `(op1, op2, op3...)`
 into a multiary operator on `Oceananigans.Fields` for use in `AbstractOperations`.
 
 Note that a multiary operator:
-    * is a function with two or more arguments: for example, `+(x, y, z)` is a multiary function;
-    * must be imported to be extended if part of `Base`: use `import Base: op; @multiary op`;
-    * can only be called on `Oceananigans.Field`s if the "location" is noted explicitly; see example.
+  * is a function with two or more arguments: for example, `+(x, y, z)` is a multiary function;
+  * must be imported to be extended if part of `Base`: use `import Base: op; @multiary op`;
+  * can only be called on `Oceananigans.Field`s if the "location" is noted explicitly; see example.
 
 Example
 =======
 
 ```jldoctest
+julia> using Oceananigans, Oceananigans.AbstractOperations
+
 julia> harmonic_plus(a, b, c) = 1/3 * (1/a + 1/b + 1/c)
-harmonic_plus(generic function with 1 method)
+harmonic_plus (generic function with 1 method)
+
+julia> c, d, e = Tuple(CenterField(RectilinearGrid(size=(1, 1, 1), extent=(1, 1, 1))) for i = 1:3);
+
+julia> harmonic_plus(c, d, e) # before magic @multiary transformation
+BinaryOperation at (Center, Center, Center)
+├── grid: 1×1×1 RectilinearGrid{Float64, Periodic, Periodic, Bounded} on CPU with 1×1×1 halo
+└── tree:
+    * at (Center, Center, Center)
+    ├── 0.3333333333333333
+    └── + at (Center, Center, Center)
+        ├── / at (Center, Center, Center)
+        │   ├── 1
+        │   └── 1×1×1 Field{Center, Center, Center} on RectilinearGrid on CPU
+        ├── / at (Center, Center, Center)
+        │   ├── 1
+        │   └── 1×1×1 Field{Center, Center, Center} on RectilinearGrid on CPU
+        └── / at (Center, Center, Center)
+            ├── 1
+            └── 1×1×1 Field{Center, Center, Center} on RectilinearGrid on CPU
 
 julia> @multiary harmonic_plus
-3-element Array{Any,1}:
- :+
- :*
- :harmonic_plus
+Set{Any} with 3 elements:
+  :+
+  :harmonic_plus
+  :*
 
-julia> c, d, e = Tuple(Field(Cell, Cell, Cell, CPU(), RegularCartesianGrid((1, 1, 16), (1, 1, 1))) for i = 1:3);
-
-julia> harmonic_plus(c, d, e) # this calls the original function, which in turn returns a (correct) operation tree
-BinaryOperation at (Cell, Cell, Cell)
-├── grid: RegularCartesianGrid{Float64,StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}}}
-│   ├── size: (1, 1, 16)
-│   └── domain: x ∈ [0.0, 1.0], y ∈ [0.0, 1.0], z ∈ [0.0, -1.0]
+julia> harmonic_plus(c, d, e)
+MultiaryOperation at (Center, Center, Center)
+├── grid: 1×1×1 RectilinearGrid{Float64, Periodic, Periodic, Bounded} on CPU with 1×1×1 halo
 └── tree:
-
-* at (Cell, Cell, Cell) via Oceananigans.AbstractOperations.identity
-├── 0.3333333333333333
-└── + at (Cell, Cell, Cell) via Oceananigans.AbstractOperations.identity
-    ├── + at (Cell, Cell, Cell) via Oceananigans.AbstractOperations.identity
-    │   ├── / at (Cell, Cell, Cell) via Oceananigans.AbstractOperations.identity
-    │   │   ├── 1
-    │   │   └── OffsetArrays.OffsetArray{Float64,3,Array{Float64,3}}
-    │   └── / at (Cell, Cell, Cell) via Oceananigans.AbstractOperations.identity
-        │   ├── 1
-        │   └── OffsetArrays.OffsetArray{Float64,3,Array{Float64,3}}
-    └── / at (Cell, Cell, Cell) via Oceananigans.AbstractOperations.identity
-        ├── 1
-        └── OffsetArrays.OffsetArray{Float64,3,Array{Float64,3}}
-
-julia> @at (Cell, Cell, Cell) harmonic_plus(c, d, e) # this returns a `MultiaryOperation` as expected
-MultiaryOperation at (Cell, Cell, Cell)
-├── grid: RegularCartesianGrid{Float64,StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}}}
-│   ├── size: (1, 1, 16)
-│   └── domain: x ∈ [0.0, 1.0], y ∈ [0.0, 1.0], z ∈ [0.0, -1.0]
-└── tree:
-
-harmonic_plus at (Cell, Cell, Cell)
-├── OffsetArrays.OffsetArray{Float64,3,Array{Float64,3}}
-├── OffsetArrays.OffsetArray{Float64,3,Array{Float64,3}}
-└── OffsetArrays.OffsetArray{Float64,3,Array{Float64,3}}
+    harmonic_plus at (Center, Center, Center)
+    ├── 1×1×1 Field{Center, Center, Center} on RectilinearGrid on CPU
+    ├── 1×1×1 Field{Center, Center, Center} on RectilinearGrid on CPU
+    └── 1×1×1 Field{Center, Center, Center} on RectilinearGrid on CPU
+```
 """
 macro multiary(ops...)
     expr = Expr(:block)
@@ -123,9 +127,25 @@ macro multiary(ops...)
     return expr
 end
 
-const multiary_operators = Set()
+#####
+##### Nested computations
+#####
+
+function compute_at!(Π::MultiaryOperation, time)
+    for a in Π.args
+        compute_at!(a, time) 
+    end
+    return Π
+end
+
+#####
+##### GPU capabilities
+#####
 
 "Adapt `MultiaryOperation` to work on the GPU via CUDAnative and CUDAdrv."
-Adapt.adapt_structure(to, multiary::MultiaryOperation{X, Y, Z}) where {X, Y, Z} =
-    MultiaryOperation{X, Y, Z}(Adapt.adapt(to, multiary.op), Adapt.adapt(to, multiary.args),
-                               Adapt.adapt(to, multiary.▶),  multiary.grid)
+Adapt.adapt_structure(to, multiary::MultiaryOperation{LX, LY, LZ}) where {LX, LY, LZ} =
+    MultiaryOperation{LX, LY, LZ}(Adapt.adapt(to, multiary.op),
+                                  Adapt.adapt(to, multiary.args),
+                                  Adapt.adapt(to, multiary.▶),
+                                  Adapt.adapt(to, multiary.grid))
+

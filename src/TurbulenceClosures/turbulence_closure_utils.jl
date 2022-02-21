@@ -1,12 +1,7 @@
-Base.eltype(::TurbulenceClosure{T}) where T = T
-
-function Base.convert(::TurbulenceClosure{T2}, closure::TurbulenceClosure{T1}) where {T1, T2}
-    paramdict = Dict((p, convert(T2, getproperty(closure, p))) for p in propertynames(closure))
-    Closure = typeof(closure).name.wrapper
-    return Closure(T2; paramdict...)
-end
+using Oceananigans.Operators
 
 tracer_diffusivities(tracers, κ::Union{Number, Function}) = with_tracers(tracers, NamedTuple(), (tracers, init) -> κ)
+tracer_diffusivities(tracers, ::Nothing) = nothing
 
 function tracer_diffusivities(tracers, κ::NamedTuple)
 
@@ -17,18 +12,19 @@ function tracer_diffusivities(tracers, κ::NamedTuple)
     return κ
 end
 
-convert_diffusivity(T, κ::Number) = convert(T, κ)
-convert_diffusivity(T, κ::NamedTuple) = convert(NamedTuple{propertynames(κ), NTuple{length(κ), T}}, κ)
+convert_diffusivity(FT, κ) = κ # fallback
 
-@inline geo_mean_Δᶠ(i, j, k, grid::RegularCartesianGrid{T}) where T = (grid.Δx * grid.Δy * grid.Δz)^T(1/3)
+convert_diffusivity(FT, κ::Number) = convert(FT, κ)
 
-function calculate_nonlinear_viscosity!(νₑ, grid, closure, buoyancy, U, C)
-    @loop for k in (1:grid.Nz; (blockIdx().z - 1) * blockDim().z + threadIdx().z)
-        @loop for j in (1:grid.Ny; (blockIdx().y - 1) * blockDim().y + threadIdx().y)
-            @loop for i in (1:grid.Nx; (blockIdx().x - 1) * blockDim().x + threadIdx().x)
-                @inbounds νₑ[i, j, k] = νᶜᶜᶜ(i, j, k, grid, closure, buoyancy, U, C)
-            end
-        end
-    end
-    return nothing
+function convert_diffusivity(FT, κ::NamedTuple)
+    κ_names = propertynames(κ)
+    return NamedTuple{κ_names}(Tuple(convert_diffusivity(FT, κi) for κi in κ))
+end
+
+@inline geo_mean_Δᶠ(i, j, k, grid::AbstractGrid) =
+    cbrt(Δxᶜᶜᶜ(i, j, k, grid) * Δyᶜᶜᶜ(i, j, k, grid) * Δzᶜᶜᶜ(i, j, k, grid))
+
+@kernel function calculate_nonlinear_viscosity!(νₑ, grid, closure, buoyancy, U, C)
+    i, j, k = @index(Global, NTuple)
+    @inbounds νₑ[i, j, k] = νᶜᶜᶜ(i, j, k, grid, closure, buoyancy, U, C)
 end

@@ -3,36 +3,36 @@
 ##### We also call this 'Constant Smagorinsky'.
 #####
 
-"""
-    SmagorinskyLilly{FT} <: AbstractSmagorinsky{FT}
-
-Parameters for the Smagorinsky-Lilly turbulence closure.
-"""
-struct SmagorinskyLilly{FT, P, K} <: AbstractSmagorinsky{FT}
+struct SmagorinskyLilly{TD, FT, P, K} <: AbstractEddyViscosityClosure{TD}
      C :: FT
     Cb :: FT
     Pr :: P
      ν :: FT
      κ :: K
 
-    function SmagorinskyLilly{FT}(C, Cb, Pr, ν, κ) where FT
+    function SmagorinskyLilly{TD, FT}(C, Cb, Pr, ν, κ) where {TD, FT}
         Pr = convert_diffusivity(FT, Pr)
          κ = convert_diffusivity(FT, κ)
-        return new{FT, typeof(Pr), typeof(κ)}(C, Cb, Pr, ν, κ)
+        return new{TD, FT, typeof(Pr), typeof(κ)}(C, Cb, Pr, ν, κ)
     end
 end
 
 """
-    SmagorinskyLilly([FT=Float64;] C=0.23, Pr=1, ν=1.05e-6, κ=1.46e-7)
+    SmagorinskyLilly([FT=Float64;] C=0.16, Pr=1, ν=0, κ=0,
+                                   time_discretization=ExplicitTimeDiscretization())
 
 Return a `SmagorinskyLilly` type associated with the turbulence closure proposed by
 Lilly (1962) and Smagorinsky (1958, 1963), which has an eddy viscosity of the form
 
-    `νₑ = (C * Δᶠ)² * √(2Σ²) * √(1 - Cb * N² / Σ²) + ν`,
+```
+νₑ = (C * Δᶠ)² * √(2Σ²) * √(1 - Cb * N² / Σ²) + ν
+```
 
 and an eddy diffusivity of the form
 
-    `κₑ = (νₑ - ν) / Pr + κ`
+```
+κₑ = (νₑ - ν) / Pr + κ
+```
 
 where `Δᶠ` is the filter width, `Σ² = ΣᵢⱼΣᵢⱼ` is the double dot product of
 the strain tensor `Σᵢⱼ`, `Pr` is the turbulent Prandtl number, and `N²` is
@@ -41,15 +41,18 @@ modification to the eddy viscosity.
 
 Keyword arguments
 =================
-    - `C`  : Model constant
-    - `Cb` : Buoyancy term multipler (`Cb = 0` turns it off, `Cb ≠ 0` turns it on.
-             Typically `Cb=1/Pr`.)
-    - `Pr` : Turbulent Prandtl numbers for each tracer. Either a constant applied to every
-             tracer, or a `NamedTuple` with fields for each tracer individually.
-    - `ν`  : Constant background viscosity for momentum
-    - `κ`  : Constant background diffusivity for tracer. Can either be a single number
-             applied to all tracers, or `NamedTuple` of diffusivities corresponding to each
-             tracer.
+  - `C`: Smagorinsky constant. Default value is 0.16 as obtained by Lilly (1966).
+  - `Cb`: Buoyancy term multipler based on Lilly (1962) (`Cb = 0` turns it off, `Cb ≠ 0` turns it on.
+          Typically, and according to the original work by Lilly (1962), `Cb=1/Pr`.)
+  - `Pr`: Turbulent Prandtl numbers for each tracer. Either a constant applied to every
+          tracer, or a `NamedTuple` with fields for each tracer individually.
+  - `ν`: Constant background viscosity for momentum.
+  - `κ`: Constant background diffusivity for tracer. Can either be a single number
+         applied to all tracers, or `NamedTuple` of diffusivities corresponding to each
+         tracer.
+  - `time_discretization`: Either `ExplicitTimeDiscretization()` or `VerticallyImplicitTimeDiscretization()`, 
+                           which integrates the terms involving only ``z``-derivatives in the
+                           viscous and diffusive fluxes with an implicit time discretization.
 
 References
 ==========
@@ -60,14 +63,18 @@ Lilly, D. K. "On the numerical simulation of buoyant convection." Tellus (1962)
 
 Smagorinsky, J. "General circulation experiments with the primitive equations: I.
     The basic experiment." Monthly weather review (1963)
-"""
-SmagorinskyLilly(FT=Float64; C=0.23, Cb=1.0, Pr=1.0, ν=ν₀, κ=κ₀) =
-    SmagorinskyLilly{FT}(C, Cb, Pr, ν, κ)
 
-function with_tracers(tracers, closure::SmagorinskyLilly{FT}) where FT
+Lilly, D. K. "The representation of small-scale turbulence in numerical simulation experiments." 
+    NCAR Manuscript No. 281, 0, 1966.
+"""
+SmagorinskyLilly(FT=Float64; C=0.16, Cb=1.0, Pr=1.0, ν=0, κ=0,
+                             time_discretization::TD=ExplicitTimeDiscretization()) where TD =
+    SmagorinskyLilly{TD, FT}(C, Cb, Pr, ν, κ)
+
+function with_tracers(tracers, closure::SmagorinskyLilly{TD, FT}) where {TD, FT}
     Pr = tracer_diffusivities(tracers, closure.Pr)
      κ = tracer_diffusivities(tracers, closure.κ)
-    return SmagorinskyLilly{FT}(closure.C, closure.Cb, Pr, closure.ν, κ)
+    return SmagorinskyLilly{TD, FT}(closure.C, closure.Cb, Pr, closure.ν, κ)
 end
 
 """
@@ -85,7 +92,7 @@ when ``N^2 > 0``, and 1 otherwise.
 @inline stability_factor(N²::FT, Σ²::FT, Cb::FT) where FT = min(one(FT), Cb * N² / Σ²)
 
 """
-    νₑ(ς, C, Δᶠ, Σ²)
+    νₑ_deardorff(ς, C, Δᶠ, Σ²)
 
 Return the eddy viscosity for constant Smagorinsky
 given the stability `ς`, model constant `C`,
@@ -93,7 +100,7 @@ filter width `Δᶠ`, and strain tensor dot product `Σ²`.
 """
 @inline νₑ_deardorff(ς, C, Δᶠ, Σ²) = ς * (C*Δᶠ)^2 * sqrt(2Σ²)
 
-@inline function νᶜᶜᶜ(i, j, k, grid, clo::SmagorinskyLilly{FT}, buoyancy, U, C) where FT
+@inline function νᶜᶜᶜ(i, j, k, grid::AbstractGrid{FT}, clo::SmagorinskyLilly, buoyancy, U, C) where FT
     Σ² = ΣᵢⱼΣᵢⱼᶜᶜᶜ(i, j, k, grid, U.u, U.v, U.w)
     N² = max(zero(FT), ℑzᵃᵃᶜ(i, j, k, grid, ∂z_b, buoyancy, C))
     Δᶠ = Δᶠ_ccc(i, j, k, grid, clo)
@@ -102,83 +109,21 @@ filter width `Δᶠ`, and strain tensor dot product `Σ²`.
     return νₑ_deardorff(ς, clo.C, Δᶠ, Σ²) + clo.ν
 end
 
-#####
-##### Abstract Smagorinsky functionality
-#####
+function calculate_diffusivities!(diffusivity_fields, closure::SmagorinskyLilly, model)
 
-"""
-    κ_∂x_c(i, j, k, grid, c, tracer, closure, νₑ)
+    arch = model.architecture
+    grid = model.grid
+    buoyancy = model.buoyancy
+    velocities = model.velocities
+    tracers = model.tracers
 
-Return `κ ∂x c`, where `κ` is a function that computes
-diffusivity at cell centers (location `ccc`), and `c` is an array of scalar
-data located at cell centers.
-"""
-@inline function κ_∂x_c(i, j, k, grid, closure::AbstractSmagorinsky,
-                        c, ::Val{tracer_index}, νₑ) where tracer_index
+    event = launch!(arch, grid, :xyz,
+                    calculate_nonlinear_viscosity!,
+                    diffusivity_fields.νₑ, grid, closure, buoyancy, velocities, tracers,
+                    dependencies = device_event(arch))
 
-    @inbounds Pr = closure.Pr[tracer_index]
-    @inbounds κ = closure.κ[tracer_index]
+    wait(device(arch), event)
 
-    νₑ = ℑxᶠᵃᵃ(i, j, k, grid, νₑ, closure)
-    κₑ = (νₑ - closure.ν) / Pr + κ
-    ∂x_c = ∂xᶠᵃᵃ(i, j, k, grid, c)
-    return κₑ * ∂x_c
-end
-
-"""
-    κ_∂y_c(i, j, k, grid, c, tracer, closure, νₑ)
-
-Return `κ ∂y c`, where `κ` is a function that computes
-diffusivity at cell centers (location `ccc`), and `c` is an array of scalar
-data located at cell centers.
-"""
-@inline function κ_∂y_c(i, j, k, grid, closure::AbstractSmagorinsky,
-                        c, ::Val{tracer_index}, νₑ) where tracer_index
-
-    @inbounds Pr = closure.Pr[tracer_index]
-    @inbounds κ = closure.κ[tracer_index]
-
-    νₑ = ℑyᵃᶠᵃ(i, j, k, grid, νₑ, closure)
-    κₑ = (νₑ - closure.ν) / Pr + κ
-    ∂y_c = ∂yᵃᶠᵃ(i, j, k, grid, c)
-    return κₑ * ∂y_c
-end
-
-"""
-    κ_∂z_c(i, j, k, grid, c, tracer, closure, νₑ)
-
-Return `κ ∂z c`, where `κ` is a function that computes
-diffusivity at cell centers (location `ccc`), and `c` is an array of scalar
-data located at cell centers.
-"""
-@inline function κ_∂z_c(i, j, k, grid, closure::AbstractSmagorinsky,
-                        c, ::Val{tracer_index}, νₑ) where tracer_index
-
-    @inbounds Pr = closure.Pr[tracer_index]
-    @inbounds κ = closure.κ[tracer_index]
-
-    νₑ = ℑzᵃᵃᶠ(i, j, k, grid, νₑ, closure)
-    κₑ = (νₑ - closure.ν) / Pr + κ
-    ∂z_c = ∂zᵃᵃᶠ(i, j, k, grid, c)
-    return κₑ * ∂z_c
-end
-
-"""
-    ∇_κ_∇c(i, j, k, grid, c, closure, diffusivities)
-
-Return the diffusive flux divergence `∇ ⋅ (κ ∇ c)` for the turbulence
-`closure`, where `c` is an array of scalar data located at cell centers.
-"""
-@inline ∇_κ_∇c(i, j, k, grid, closure::AbstractSmagorinsky, c, tracer_index,
-               diffusivities, args...) = (
-      ∂xᶜᵃᵃ(i, j, k, grid, κ_∂x_c, closure, c, tracer_index, diffusivities.νₑ)
-    + ∂yᵃᶜᵃ(i, j, k, grid, κ_∂y_c, closure, c, tracer_index, diffusivities.νₑ)
-    + ∂zᵃᵃᶜ(i, j, k, grid, κ_∂z_c, closure, c, tracer_index, diffusivities.νₑ)
-)
-
-function calculate_diffusivities!(K, arch, grid, closure::AbstractSmagorinsky, buoyancy, U, C)
-    @launch(device(arch), config=launch_config(grid, :xyz),
-            calculate_nonlinear_viscosity!(K.νₑ, grid, closure, buoyancy, U, C))
     return nothing
 end
 
@@ -186,8 +131,8 @@ end
 ##### Double dot product of strain on cell edges (currently unused)
 #####
 
-"Return the filter width for Constant Smagorinsky on a Regular Cartesian grid."
-@inline Δᶠ(i, j, k, grid::RegularCartesianGrid, ::AbstractSmagorinsky) = geo_mean_Δᶠ(i, j, k, grid)
+"Return the filter width for Constant Smagorinsky on a regular rectilinear grid."
+@inline Δᶠ(i, j, k, grid, ::SmagorinskyLilly) = geo_mean_Δᶠ(i, j, k, grid)
 
 # Temporarily set filter widths to cell-size (rather than distance between cell centers, etc.)
 const Δᶠ_ccc = Δᶠ
@@ -249,3 +194,34 @@ end
             + 2 *   ℑyᵃᶜᵃ(i, j, k, grid, Σ₂₃², u, v, w)
             )
 end
+
+Base.show(io::IO, closure::SmagorinskyLilly) =
+    print(io, "SmagorinskyLilly: C=$(closure.C), Cb=$(closure.Cb), Pr=$(closure.Pr), ν=$(closure.ν), κ=$(closure.κ)")
+
+#####
+##### For closures that only require an eddy viscosity νₑ field.
+#####
+
+function DiffusivityFields(grid, tracer_names, bcs, closure::SmagorinskyLilly)
+
+    default_eddy_viscosity_bcs = (; νₑ = FieldBoundaryConditions(grid, (Center, Center, Center)))
+    bcs = merge(default_eddy_viscosity_bcs, bcs)
+    νₑ = CenterField(grid, boundary_conditions=bcs.νₑ)
+
+    # Use AbstractOperations to write eddy diffusivities in terms of
+    # eddy viscosity
+    κₑ_ops = []
+
+    for i = 1:length(tracer_names)
+        Pr = closure.Pr[i]
+        κ = closure.κ[i]
+        ν = closure.ν
+        κₑ_op = (νₑ - ν) / Pr + κ
+        push!(κₑ_ops, κₑ_op)
+    end
+
+    κₑ = NamedTuple{tracer_names}(Tuple(κₑ_ops))
+
+    return (; νₑ, κₑ)
+end
+
